@@ -83,44 +83,65 @@ donor.level2.props.df <- as.data.frame.matrix(donor.level2.props) %>%
 cat(sprintf("\n%d donors x %d level2 subtypes\n", nrow(donor.level2.props), ncol(donor.level2.props)))
 catObj(head(round(donor.level2.props, 3)))
 
-# ---------------------- LASP subtype make-up of each donor
-# The same kind of table, but only for the LASP subtypes, and as a fraction of each
-# donor's LASP cells (not all their cells), so every row again sums to 1.
-lasp.subtypes <- c("LASP1", "LASP2", "LASP3", "LASP4", "LASP5")
-reed.lasp <- reed$level2 %in% lasp.subtypes
+# ---------------------- Subtype make-up of each donor, one cell type at a time
+# For one cell type: a donors x subtypes table of that cell type's subtypes, as a
+# fraction of each donor's cells of that type (not all their cells), so every row
+# sums to 1. Prints the table and each donor's cell count (proportions are less
+# reliable for donors with few cells), and saves a stacked bar plot with one bar
+# per donor to figures/<run>/01/<name>_subtypes_per_donor.png.
+# Returns a list: counts (table), props (table), props.df (data frame with donor_id first).
+get_donor_subtype_props <- function(subtypes, name) {
+  is.subtype <- reed$level2 %in% subtypes
 
-donor.lasp.counts <- table(
-  donor_id = as.character(reed$donor_id[reed.lasp]),
-  level2 = factor(as.character(reed$level2[reed.lasp]), levels = lasp.subtypes)
-)
-donor.lasp.props <- prop.table(donor.lasp.counts, margin = 1)
+  counts <- table(
+    donor_id = as.character(reed$donor_id[is.subtype]),
+    level2 = factor(as.character(reed$level2[is.subtype]), levels = subtypes)
+  )
+  props <- prop.table(counts, margin = 1)
 
-# Check that every donor's LASP proportions add up to 1
-stopifnot(all(abs(rowSums(donor.lasp.props) - 1) < 1e-8))
+  # Check that every donor's proportions add up to 1
+  stopifnot(all(abs(rowSums(props) - 1) < 1e-8))
 
-# The same table as a data frame, with donor_id as the first column
-donor.lasp.props.df <- as.data.frame.matrix(donor.lasp.props) %>%
-  rownames_to_column("donor_id")
+  props.df <- as.data.frame.matrix(props) %>%
+    rownames_to_column("donor_id")
 
-# Print the table, and how many LASP cells each donor has (the proportions are
-# less reliable for donors with few cells)
-catObj(round(donor.lasp.props, 3))
-catObj(sort(rowSums(donor.lasp.counts)))
+  cat(sprintf("\n%s subtypes per donor:\n", name))
+  catObj(round(props, 3))
+  cat(sprintf("Number of %s cells per donor:\n", name))
+  catObj(sort(rowSums(counts)))
 
-# Stacked bar plot: one bar per donor, split by LASP subtype
-p <- as.data.frame(donor.lasp.props) %>%
-  rename(Proportion = Freq) %>%
-  ggplot(aes(x = donor_id, y = Proportion, fill = level2)) +
-  geom_col() +
-  labs(
-    x = "Donor",
-    y = "Proportion of LASP cells",
-    fill = "LASP subtype",
-    title = "LASP subtype make-up of each HBCA donor"
-  ) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
-ggsave(file.path(figure_outdir_cur, "LASP_subtypes_per_donor.png"), plot = p, width = 16, height = 6, dpi = 200)
+  # Stacked bar plot: one bar per donor, split by subtype
+  p <- as.data.frame(props) %>%
+    rename(Proportion = Freq) %>%
+    ggplot(aes(x = donor_id, y = Proportion, fill = level2)) +
+    geom_col() +
+    labs(
+      x = "Donor",
+      y = sprintf("Proportion of %s cells", name),
+      fill = sprintf("%s subtype", name),
+      title = sprintf("%s subtype make-up of each HBCA donor", name)
+    ) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+  ggsave(file.path(figure_outdir_cur, sprintf("%s_subtypes_per_donor.png", name)), plot = p, width = 16, height = 6, dpi = 200)
+
+  list(counts = counts, props = props, props.df = props.df)
+}
+
+# LASP (luminal adaptive secretory precursor) subtypes
+lasp.res <- get_donor_subtype_props(c("LASP1", "LASP2", "LASP3", "LASP4", "LASP5"), "LASP")
+donor.lasp.props <- lasp.res$props
+donor.lasp.props.df <- lasp.res$props.df
+
+# LHS (luminal hormone sensing) subtypes
+lhs.res <- get_donor_subtype_props(c("LHS1", "LHS2", "LHS3"), "LHS")
+donor.lhs.props <- lhs.res$props
+donor.lhs.props.df <- lhs.res$props.df
+
+# BMYO (basal myoepithelial) subtypes
+bmyo.res <- get_donor_subtype_props(c("BMYO1", "BMYO2"), "BMYO")
+donor.bmyo.props <- bmyo.res$props
+donor.bmyo.props.df <- bmyo.res$props.df
 
 # Record the package versions in the log
 sessionInfo()

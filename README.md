@@ -13,15 +13,15 @@ sbatch Run_01.sh [cellranger_run_name]
 ## 01_Analysis.R
 
 - **Needs:** `hbca-global.h5ad`, in the folder set as `HBCA_DIR` in `local_paths.env`.
-- **Produces:** `figures/<run>/01/LASP_subtypes_per_donor.png`, a stacked bar plot with one bar per donor (55 donors) and the five LASP subtypes stacked.
+- **Produces:** three stacked bar plots in `figures/<run>/01/`, each with one bar per donor (55 donors) and that cell type's subtypes stacked: `LASP_subtypes_per_donor.png` (`LASP1`–`LASP5`), `LHS_subtypes_per_donor.png` (`LHS1`–`LHS3`) and `BMYO_subtypes_per_donor.png` (`BMYO1`–`BMYO2`).
 
 What it computes (printed to the log, not saved):
 
 - The atlas's size and its cell counts per `level1` and `level2` label.
 - `donor.level2.props`: a donors x `level2` subtypes table. Each value is the fraction of that donor's cells with that subtype, so every row sums to 1. `donor.level2.props.df` is the same table as a data frame, with `donor_id` as the first column. The log shows its size and first rows.
-- `donor.lasp.props` (and `donor.lasp.props.df`): the same kind of table for the LASP subtypes only (`LASP1`–`LASP5`), as a fraction of each donor's LASP cells, so every row again sums to 1. The log shows the full table and each donor's number of LASP cells.
+- `donor.lasp.props`, `donor.lhs.props` and `donor.bmyo.props` (each also as a `.df` data frame): the same kind of table for one cell type's subtypes only, as a fraction of each donor's cells of that type, so every row again sums to 1. They're made by `get_donor_subtype_props()`, which also saves the bar plot. The log shows each full table and each donor's cell count for that type.
 
-**Some donors have very few LASP cells** (the smallest has 14), so their proportions are noisy.
+**Some donors have very few cells of a type, so their proportions are noisy.** The smallest counts are 14 LASP, 26 LHS and 2 BMYO cells.
 
 What it sets up:
 
