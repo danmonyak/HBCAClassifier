@@ -13,7 +13,7 @@ sbatch Run_01.sh [cellranger_run_name]
 ## 01_Analysis.R
 
 - **Needs:** `hbca-global.h5ad`, in the folder set as `HBCA_DIR` in `local_paths.env`.
-- **Produces:** nothing yet. It prints the atlas's size and its cell counts per `level1` and `level2` label, then `sessionInfo()`.
+- **Produces:** nothing saved yet. It prints the atlas's size and its cell counts per `level1` and `level2` label. It then builds `donor.level2.props`: a donors x `level2` subtypes table where each value is the fraction of that donor's cells with that subtype, so every row sums to 1. It's also kept as a data frame, `donor.level2.props.df`, with `donor_id` as the first column. The log shows the table's size and first rows, then `sessionInfo()`.
 
 What it sets up:
 
