@@ -83,5 +83,44 @@ donor.level2.props.df <- as.data.frame.matrix(donor.level2.props) %>%
 cat(sprintf("\n%d donors x %d level2 subtypes\n", nrow(donor.level2.props), ncol(donor.level2.props)))
 catObj(head(round(donor.level2.props, 3)))
 
+# ---------------------- LASP subtype make-up of each donor
+# The same kind of table, but only for the LASP subtypes, and as a fraction of each
+# donor's LASP cells (not all their cells), so every row again sums to 1.
+lasp.subtypes <- c("LASP1", "LASP2", "LASP3", "LASP4", "LASP5")
+reed.lasp <- reed$level2 %in% lasp.subtypes
+
+donor.lasp.counts <- table(
+  donor_id = as.character(reed$donor_id[reed.lasp]),
+  level2 = factor(as.character(reed$level2[reed.lasp]), levels = lasp.subtypes)
+)
+donor.lasp.props <- prop.table(donor.lasp.counts, margin = 1)
+
+# Check that every donor's LASP proportions add up to 1
+stopifnot(all(abs(rowSums(donor.lasp.props) - 1) < 1e-8))
+
+# The same table as a data frame, with donor_id as the first column
+donor.lasp.props.df <- as.data.frame.matrix(donor.lasp.props) %>%
+  rownames_to_column("donor_id")
+
+# Print the table, and how many LASP cells each donor has (the proportions are
+# less reliable for donors with few cells)
+catObj(round(donor.lasp.props, 3))
+catObj(sort(rowSums(donor.lasp.counts)))
+
+# Stacked bar plot: one bar per donor, split by LASP subtype
+p <- as.data.frame(donor.lasp.props) %>%
+  rename(Proportion = Freq) %>%
+  ggplot(aes(x = donor_id, y = Proportion, fill = level2)) +
+  geom_col() +
+  labs(
+    x = "Donor",
+    y = "Proportion of LASP cells",
+    fill = "LASP subtype",
+    title = "LASP subtype make-up of each HBCA donor"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggsave(file.path(figure_outdir_cur, "LASP_subtypes_per_donor.png"), plot = p, width = 16, height = 6, dpi = 200)
+
 # Record the package versions in the log
 sessionInfo()

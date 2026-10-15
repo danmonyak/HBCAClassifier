@@ -13,7 +13,15 @@ sbatch Run_01.sh [cellranger_run_name]
 ## 01_Analysis.R
 
 - **Needs:** `hbca-global.h5ad`, in the folder set as `HBCA_DIR` in `local_paths.env`.
-- **Produces:** nothing saved yet. It prints the atlas's size and its cell counts per `level1` and `level2` label. It then builds `donor.level2.props`: a donors x `level2` subtypes table where each value is the fraction of that donor's cells with that subtype, so every row sums to 1. It's also kept as a data frame, `donor.level2.props.df`, with `donor_id` as the first column. The log shows the table's size and first rows, then `sessionInfo()`.
+- **Produces:** `figures/<run>/01/LASP_subtypes_per_donor.png`, a stacked bar plot with one bar per donor (55 donors) and the five LASP subtypes stacked.
+
+What it computes (printed to the log, not saved):
+
+- The atlas's size and its cell counts per `level1` and `level2` label.
+- `donor.level2.props`: a donors x `level2` subtypes table. Each value is the fraction of that donor's cells with that subtype, so every row sums to 1. `donor.level2.props.df` is the same table as a data frame, with `donor_id` as the first column. The log shows its size and first rows.
+- `donor.lasp.props` (and `donor.lasp.props.df`): the same kind of table for the LASP subtypes only (`LASP1`–`LASP5`), as a fraction of each donor's LASP cells, so every row again sums to 1. The log shows the full table and each donor's number of LASP cells.
+
+**Some donors have very few LASP cells** (the smallest has 14), so their proportions are noisy.
 
 What it sets up:
 
