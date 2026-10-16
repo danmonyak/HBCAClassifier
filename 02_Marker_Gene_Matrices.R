@@ -97,13 +97,41 @@ get_marker_matrix <- function(markers, name) {
 
 celltype.marker.expr <- get_marker_matrix(celltype.markers, "Cell type")
 state.marker.expr <- get_marker_matrix(state.markers, "Cell state")
+# celltype.labels <- reed$
 
 # ---------------------- Analysis
 # Save figures to figure_outdir_cur, e.g.
 #   ggsave(file.path(figure_outdir_cur, "my_plot.png"), plot = p, width = 8, height = 6, dpi = 200)
 # Save objects that a later script needs to output_dir, e.g.
-#   saveRDS(celltype.marker.expr, file.path(output_dir, "reed_celltype_marker_expr.rds"))
+saveRDS(celltype.marker.expr, file.path(output_dir, "reed_celltype_marker_expr.rds"))
+saveRDS(state.marker.expr, file.path(output_dir, "reed_state_marker_expr.rds"))
+saveRDS(reed$level1, file.path(output_dir, "reed_level1.rds"))
+saveRDS(reed$level2, file.path(output_dir, "reed_level2.rds"))
 
+# ---------------------- The same objects in formats Python can read
+# Matrices: Matrix Market (.mtx.gz), which keeps them sparse, plus one file of gene
+# symbols (rows) and one of cell barcodes (columns), in matrix order. In Python:
+#   from scipy.io import mmread; import pandas as pd
+#   m = mmread("reed_celltype_marker_expr.mtx.gz").tocsr()    # genes x cells
+#   genes = pd.read_csv("reed_celltype_marker_expr.genes.txt.gz", header=None)[0]
+#   cells = pd.read_csv("reed_celltype_marker_expr.cells.txt.gz", header=None)[0]
+# Labels: one gzipped CSV, one row per cell (barcode, level1, level2), in the same
+# cell order as the matrices.
+write_marker_matrix <- function(expr, prefix) {
+  mtx.file <- file.path(output_dir, paste0(prefix, ".mtx"))
+  writeMM(as(expr, "CsparseMatrix"), mtx.file)
+  system2("gzip", c("-f", shQuote(mtx.file)))
+  writeLines(rownames(expr), gzfile(file.path(output_dir, paste0(prefix, ".genes.txt.gz"))))
+  writeLines(colnames(expr), gzfile(file.path(output_dir, paste0(prefix, ".cells.txt.gz"))))
+}
+write_marker_matrix(celltype.marker.expr, "reed_celltype_marker_expr")
+write_marker_matrix(state.marker.expr, "reed_state_marker_expr")
+
+write.csv(
+  data.frame(cell = colnames(reed), level1 = reed$level1, level2 = reed$level2),
+  gzfile(file.path(output_dir, "reed_cell_labels.csv.gz")),
+  row.names = FALSE
+)
 
 
 # Record the package versions in the log

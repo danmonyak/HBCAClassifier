@@ -37,9 +37,10 @@ What it sets up:
 ## 02_Marker_Gene_Matrices.R
 
 - **Needs:** `hbca-global.h5ad` (as above) and `data/HBCA_Reed_Top_Marker_Genes.xlsx`.
-- **Produces:** nothing saved yet. It builds two matrices, kept in memory:
-  - `celltype.marker.expr`: the cell type marker genes x all atlas cells.
-  - `state.marker.expr`: the cell state (`level2`) marker genes x all atlas cells.
+- **Produces**, all in `<STORAGE_DIR>/<run>/`:
+  - `reed_celltype_marker_expr.rds` and `reed_state_marker_expr.rds`: the two matrices (`celltype.marker.expr` and `state.marker.expr`), genes x all atlas cells, with gene symbols as row names.
+  - `reed_level1.rds` and `reed_level2.rds`: each atlas cell's `level1` and `level2` label.
+  - The same data for Python: each matrix as `<name>.mtx.gz` (sparse Matrix Market), plus `<name>.genes.txt.gz` and `<name>.cells.txt.gz` (row and column names, in order), and `reed_cell_labels.csv.gz` (one row per cell: `cell`, `level1`, `level2`, in the matrices' cell order). Read them with `scipy.io.mmread` and `pandas.read_csv`. The script's comments show the exact lines.
 
 What it does:
 
