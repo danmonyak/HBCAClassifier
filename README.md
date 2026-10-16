@@ -7,8 +7,11 @@ Run everything from inside this directory, because figures are written to a rela
 ## Running
 
 ```
-sbatch Run_01.sh [cellranger_run_name]
+sbatch Run_01.sh [cellranger_run_name]   # 01_Analysis.R
+sbatch Run_02.sh [cellranger_run_name]   # 02_Marker_Gene_Matrices.R
 ```
+
+The two scripts don't depend on each other.
 
 ## 01_Analysis.R
 
@@ -31,8 +34,22 @@ What it sets up:
 
 **The atlas is large**: 803,283 cells x 33,604 genes, 8.3 GB on disk.
 
+## 02_Marker_Gene_Matrices.R
+
+- **Needs:** `hbca-global.h5ad` (as above) and `data/HBCA_Reed_Top_Marker_Genes.xlsx`.
+- **Produces:** nothing saved yet. It builds two matrices, kept in memory:
+  - `celltype.marker.expr`: the cell type marker genes x all atlas cells.
+  - `state.marker.expr`: the cell state (`level2`) marker genes x all atlas cells.
+
+What it does:
+
+- Loads the atlas as `reed`, the same way as `01_Analysis.R`. **The values are log-normalized expression**: the atlas's `X`, the only matrix `read_h5ad` loads. The file also has raw counts in a separate `raw` slot, which isn't loaded.
+- Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
+- Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
+
 ## Other files
 
 - `config.R`: settings for this folder (`figure_outdir`, point sizes, `rng.seed`). It sources the shared `RNAseq_SingleCell/config.R`.
+- `Run_02.sh`: SLURM script for `02_Marker_Gene_Matrices.R`, with the same resources as `Run_01.sh`.
 - `Run_01.sh`: SLURM script for `01_Analysis.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment. 100G matches `Cell_Type_Assignment/Run_02.sh`, which also loads the atlas.
 - `output_files/`, `error_files/`: SLURM stdout and stderr.
