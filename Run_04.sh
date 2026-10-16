@@ -15,4 +15,4 @@ source $HOME/.bashrc
 conda activate torch
 export PYTHONUNBUFFERED=1
 
-python 04_Level2_Classifier_CV.py $1 $2
+python 04_Level2_Classifier_CV.py "$1" "$2"

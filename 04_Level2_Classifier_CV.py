@@ -13,7 +13,7 @@
 # Needs:    X.npz and prep.npz from 03, in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/
 #           SLURM_ARRAY_TASK_ID (set by SLURM; set it by hand to run one task outside an array)
 # Produces: cv/fold<k>_l1ratio<r>.csv in the same folder: one row per alpha, with the held-out
-#           log-loss, accuracy, balanced accuracy, genes kept, and the solver's convergence
+#           log-loss, accuracy, balanced accuracy, macro F1, genes kept, and the solver's convergence
 #
 # Usage: sbatch Run_04.sh [cellranger_run_name] [max_cells_per_class]
 #        (python 04_Level2_Classifier_CV.py [cellranger_run_name] [max_cells_per_class])
@@ -25,7 +25,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, balanced_accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
 from level2_classifier_common import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
@@ -86,6 +86,8 @@ for a_index, alpha in enumerate(alphas):
         log_loss=mean_log_loss(y_va, P),
         accuracy=accuracy_score(y_va, pred),
         balanced_accuracy=balanced_accuracy_score(y_va, pred),
+        # macro F1: the mean of the per-class F1 scores, so every class counts equally
+        f1_macro=f1_score(y_va, pred, labels=CLASSES, average='macro', zero_division=0),
         n_genes=int((np.linalg.norm(W, axis=1) > 0).sum()),
         n_iter=info['n_iter'], kkt=info['kkt'], converged=info['converged'],
         seconds=time.time() - t,
@@ -93,7 +95,7 @@ for a_index, alpha in enumerate(alphas):
     r = rows[-1]
     log(f"alpha {a_index + 1}/{len(alphas)} = {alpha:.3g}: {r['seconds']:.1f} s, {r['n_iter']} iterations"
         f"{'' if r['converged'] else ' (NOT converged)'}, {r['n_genes']} genes, "
-        f"log-loss {r['log_loss']:.4f}, balanced accuracy {r['balanced_accuracy']:.3f}")
+        f"log-loss {r['log_loss']:.4f}, balanced accuracy {r['balanced_accuracy']:.3f}, macro F1 {r['f1_macro']:.3f}")
 
 out_file = os.path.join(cv_dir, f'fold{k}_l1ratio{l1_ratio}.csv')
 pd.DataFrame(rows).to_csv(out_file, index=False)

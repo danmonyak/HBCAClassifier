@@ -79,7 +79,7 @@ The alpha grids are set once from the whole training set, so every fold uses the
 ### 04_Level2_Classifier_CV.py
 
 - **Needs:** `X.npz` and `prep.npz` from `03`.
-- **Produces:** `cv/fold<k>_l1ratio<r>.csv` in the same folder: one row per alpha, with the held-out log-loss, accuracy, balanced accuracy, genes kept and whether the solver converged.
+- **Produces:** `cv/fold<k>_l1ratio<r>.csv` in the same folder: one row per alpha, with the held-out log-loss, accuracy, balanced accuracy, macro F1 (the mean of the per-class F1 scores, so every class counts equally), genes kept and whether the solver converged.
 
 `Run_04.sh` is a SLURM array of 20 tasks, one per fold and `l1_ratio`. Each fits the whole alpha path on 16 CPUs (48G). **If you change `N_FOLDS` or `L1_RATIOS`, change the `--array` line to match.**
 
@@ -91,9 +91,17 @@ The alpha grids are set once from the whole training set, so every fold uses the
   - `coef.csv`: the fitted coefficients (the intercept, then one row per gene; one column per class, plus an `importance` column).
   - `test_report.csv`: precision, recall and F1 per class on the test set.
   - `model.npz`: `W`, `b`, the genes, classes and per-gene `scale`, to apply the model to other cells: probabilities = softmax((x / scale) @ W + b), with x the log-normalized expression of the same genes.
-  - In `figures/<run>/05/`: `cv_curves.png` and `test_confusion_matrix.png`.
+  - In `figures/<run>/05/`: `cv_curves.png` (mean CV log-loss, macro F1 and genes kept against alpha, one line per `l1_ratio`; a black star marks the chosen model) and `test_confusion_matrix.png`.
 
-The log has the test accuracy, balanced accuracy and log-loss, and the top genes. `Run_05.sh`: 16 CPUs, 48G.
+The log has the test accuracy, balanced accuracy, macro F1 and log-loss, and the top genes. `Run_05.sh`: 16 CPUs, 48G.
+
+**A smaller model:** `05` takes an optional third argument, `max_genes`. It then picks the best model (lowest CV log-loss) among those that keep at most that many genes, refits it and evaluates it. For example, on the full data with at most 200 genes:
+
+```
+sbatch Run_05.sh 90 none 200
+```
+
+(`none` means no cell cap.) **The cap must match a run whose `03` and `04` have finished:** `none` needs the full-data CV, and a capped run needs the same cap (e.g. `sbatch Run_05.sh 90 300 50`). If the CV results are missing, `05` stops and lists them. **Very small limits can select the empty model:** the largest alpha in each grid drops every gene, so if no other model is small enough, `05` picks that one (0 genes, every cell predicted as `Other`). This reuses the results of `03` and `04` (no need to rerun them), but it does refit the model. Every output except `cv_summary.csv` gets a `_max<N>genes` suffix, e.g. `test_confusion_matrix_max200genes.png`, so it doesn't overwrite the unconstrained model. The cap applies to the genes kept averaged over the CV folds, so the refitted model can keep a few more or fewer genes. Its count is in the confusion matrix's title.
 
 ### The model code
 

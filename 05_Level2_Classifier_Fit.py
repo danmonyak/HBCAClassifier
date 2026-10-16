@@ -4,6 +4,11 @@
 # (l1_ratio, alpha) pair with the lowest mean held-out log-loss, refits it on the whole training
 # set, and evaluates it on the test set.
 #
+# Optional max_genes (third argument): pick the best pair among those that keep at most that many
+# genes (mean over the CV folds) instead. Its outputs get a _max<N>genes suffix, so they don't
+# overwrite the unconstrained ones. The refitted model can keep a few more or fewer genes than
+# the CV mean.
+#
 # Needs:    from 03 and 04, in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/:
 #           X.npz, prep.npz, and all 20 cv/fold<k>_l1ratio<r>.csv files
 # Produces: in that folder:
@@ -13,11 +18,15 @@
 #           test_report.csv  per-class precision, recall and F1 on the test set
 #           model.npz        W, b, the genes, classes and the scaler's per-gene scale, to apply the
 #                            model to other cells: P = softmax((x / scale) @ W + b)
-#           in figures/<run>/05/ (or .../05/cap<N>/): cv_curves.png and test_confusion_matrix.png
+#           in figures/<run>/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes
+#           kept against alpha) and test_confusion_matrix.png
+#           With max_genes, every file above except cv_summary.csv gets a _max<N>genes suffix.
 #
-# Usage: python 05_Level2_Classifier_Fit.py [cellranger_run_name] [max_cells_per_class]
+# Usage: python 05_Level2_Classifier_Fit.py [cellranger_run_name] [max_cells_per_class] [max_genes]
+#        e.g. the full data, at most 200 genes: sbatch Run_05.sh 90 none 200
 
 import os
+import sys
 import time
 import warnings
 
@@ -29,7 +38,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
-                             classification_report, confusion_matrix)
+                             classification_report, confusion_matrix, f1_score)
 
 from level2_classifier_common import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
@@ -45,7 +54,10 @@ cellranger_run_name, max_cells_per_class = get_args()
 clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
 figure_outdir_cur = get_figure_dir(cellranger_run_name, max_cells_per_class, '05')
 threads = set_threads()
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}, {threads} threads\n")
+max_genes = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none') else None
+suffix = '' if max_genes is None else f'_max{max_genes}genes'     # added to every output file name
+print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}, "
+      f"max genes: {max_genes}, {threads} threads\n")
 
 # ---------------------- Collect the CV results
 cv_files = [os.path.join(clf_dir, 'cv', f'fold{k}_l1ratio{l1r}.csv') for k in range(N_FOLDS) for l1r in L1_RATIOS]
@@ -60,27 +72,40 @@ if not cv_results['converged'].all():
 cv_summary = (cv_results.groupby(['l1_ratio', 'alpha'])
               .agg(log_loss=('log_loss', 'mean'), log_loss_se=('log_loss', 'sem'),
                    accuracy=('accuracy', 'mean'), balanced_accuracy=('balanced_accuracy', 'mean'),
+                   f1_macro=('f1_macro', 'mean'), f1_macro_se=('f1_macro', 'sem'),
                    n_genes=('n_genes', 'mean'))
               .reset_index())
 cv_summary.to_csv(os.path.join(clf_dir, 'cv_summary.csv'), index=False)
 
-best = cv_summary.loc[cv_summary['log_loss'].idxmin()]
+# The best pair: lowest mean CV log-loss, among the pairs with at most max_genes genes if it's set
+eligible = cv_summary if max_genes is None else cv_summary[cv_summary['n_genes'] <= max_genes]
+if eligible.empty:
+    raise ValueError(f"No (l1_ratio, alpha) pair keeps at most {max_genes} genes. "
+                     f"The smallest models keep {cv_summary['n_genes'].min():.0f}.")
+best = eligible.loc[eligible['log_loss'].idxmin()]
 best_l1_ratio, best_alpha = best['l1_ratio'], best['alpha']
-print(f"Best: l1_ratio = {best_l1_ratio}, alpha = {best_alpha:.3g} "
+print(f"Best{'' if max_genes is None else f' with at most {max_genes} genes'}: "
+      f"l1_ratio = {best_l1_ratio}, alpha = {best_alpha:.3g} "
       f"(mean CV log-loss {best['log_loss']:.4f}, balanced accuracy {best['balanced_accuracy']:.3f}, "
-      f"~{best['n_genes']:.0f} genes)\n")
+      f"macro F1 {best['f1_macro']:.3f}, ~{best['n_genes']:.0f} genes)\n")
 
-# CV curves: mean held-out log-loss (+/- 1 standard error) against alpha, one line per l1_ratio
-fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+# CV curves against alpha, one line per l1_ratio: mean held-out log-loss and macro F1 (+/- 1 standard
+# error), and genes kept. The black star marks the chosen pair.
+fig, axes = plt.subplots(1, 3, figsize=(18, 4.5))
 for l1r, d in cv_summary.groupby('l1_ratio'):
     axes[0].errorbar(d['alpha'], d['log_loss'], yerr=d['log_loss_se'], marker='o', ms=3, capsize=2, label=f'l1_ratio = {l1r}')
-    axes[1].plot(d['alpha'], d['n_genes'], marker='o', ms=3, label=f'l1_ratio = {l1r}')
-axes[0].axvline(best_alpha, color='grey', ls='--', lw=1)
-axes[0].set(xscale='log', xlabel='alpha', ylabel='Mean CV log-loss', title='Cross-validation')
-axes[1].set(xscale='log', xlabel='alpha', ylabel='Genes kept (mean over folds)', title='Model size')
+    axes[1].errorbar(d['alpha'], d['f1_macro'], yerr=d['f1_macro_se'], marker='o', ms=3, capsize=2, label=f'l1_ratio = {l1r}')
+    axes[2].plot(d['alpha'], d['n_genes'], marker='o', ms=3, label=f'l1_ratio = {l1r}')
+for ax, col in zip(axes, ['log_loss', 'f1_macro', 'n_genes']):
+    ax.plot(best_alpha, best[col], marker='*', ms=14, color='black', ls='none', zorder=5)
+if max_genes is not None:
+    axes[2].axhline(max_genes, color='grey', ls='--', lw=1)
+axes[0].set(xscale='log', xlabel='alpha', ylabel='Mean CV log-loss', title='Cross-validation: log-loss')
+axes[1].set(xscale='log', xlabel='alpha', ylabel='Mean CV macro F1', title='Cross-validation: macro F1')
+axes[2].set(xscale='log', xlabel='alpha', ylabel='Genes kept (mean over folds)', title='Model size')
 axes[0].legend()
 fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, 'cv_curves.png'), dpi=200)
+fig.savefig(os.path.join(figure_outdir_cur, f'cv_curves{suffix}.png'), dpi=200)
 
 # ---------------------- Refit on the whole training set
 X, prep = load_prepared(clf_dir)
@@ -108,26 +133,29 @@ print()
 print(f"Test log-loss:          {mean_log_loss(y_test, P_test):.4f}")
 print(f"Test accuracy:          {accuracy_score(y_test, pred_test):.4f}")
 print(f"Test balanced accuracy: {balanced_accuracy_score(y_test, pred_test):.4f}")
+print(f"Test macro F1:          {f1_score(y_test, pred_test, labels=CLASSES, average='macro', zero_division=0):.4f}")
 print()
 print(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0))
 pd.DataFrame(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0, output_dict=True)) \
-    .T.to_csv(os.path.join(clf_dir, 'test_report.csv'))
+    .T.to_csv(os.path.join(clf_dir, f'test_report{suffix}.csv'))
 
 # Confusion matrix on the test set, as the fraction of each true class (rows sum to 1)
 cm = confusion_matrix(y_test, pred_test, labels=CLASSES, normalize='true')
 fig, ax = plt.subplots(figsize=(9, 7.5))
 sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
             vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
-ax.set(xlabel='Predicted', ylabel='True', title='Test set confusion matrix')
+ax.set(xlabel='Predicted', ylabel='True',
+       title=f'Test set confusion matrix ({(np.linalg.norm(W, axis=1) > 0).sum()} genes, '
+             f'l1_ratio {best_l1_ratio}, alpha {best_alpha:.3g})')
 fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, 'test_confusion_matrix.png'), dpi=200)
+fig.savefig(os.path.join(figure_outdir_cur, f'test_confusion_matrix{suffix}.png'), dpi=200)
 
 # ---------------------- Coefficients
 # On the scaled-gene scale. Genes dropped by the group lasso have all-zero rows.
 coef = pd.DataFrame(np.vstack([b, W]), index=np.r_[['(intercept)'], genes], columns=CLASSES)
 coef['importance'] = np.r_[np.nan, np.linalg.norm(W, axis=1)]
-coef.to_csv(os.path.join(clf_dir, 'coef.csv'))
-np.savez(os.path.join(clf_dir, 'model.npz'), W=W, b=b, genes=genes, classes=CLASSES, scale=scaler.scale_,
+coef.to_csv(os.path.join(clf_dir, f'coef{suffix}.csv'))
+np.savez(os.path.join(clf_dir, f'model{suffix}.npz'), W=W, b=b, genes=genes, classes=CLASSES, scale=scaler.scale_,
          l1_ratio=best_l1_ratio, alpha=best_alpha)
 
 selected = coef.drop(index='(intercept)').query('importance > 0').sort_values('importance', ascending=False)

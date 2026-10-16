@@ -8,7 +8,8 @@
 #   cellranger_run_name:  default 90. Inputs are read from <STORAGE_DIR>/<run>/.
 #   max_cells_per_class:  default none (every cell). Caps the cells per class before the split, for a
 #                         quicker run. Each cap gets its own output folder, so capped runs never
-#                         overwrite the full one.
+#                         overwrite the full one. Pass 'none' for no cap when a later argument follows.
+# 05 also takes a third, max_genes (see 05_Level2_Classifier_Fit.py).
 
 import os
 import sys
@@ -48,7 +49,7 @@ MAX_ITER = 20000         # per alpha
 def get_args():
     """Read [cellranger_run_name] [max_cells_per_class] from the command line."""
     run = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else '90'
-    cap = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+    cap = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ('', 'none') else None
     return run, cap
 
 

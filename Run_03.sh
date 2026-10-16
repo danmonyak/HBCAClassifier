@@ -13,4 +13,4 @@ source $HOME/.bashrc
 conda activate torch
 export PYTHONUNBUFFERED=1
 
-python 03_Level2_Classifier_Prep.py $1 $2
+python 03_Level2_Classifier_Prep.py "$1" "$2"
