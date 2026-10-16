@@ -25,7 +25,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 from level2_classifier_common import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZE, N_FOLDS, RANDOM_STATE,
-                                      L1_RATIOS, N_ALPHAS, ALPHA_MIN_RATIO,
+                                      L1_RATIOS, N_ALPHAS, ALPHA_MIN,
                                       get_args, get_classifier_dir, get_figure_dir, one_hot)
 
 t_start = time.time()
@@ -90,10 +90,15 @@ X_train = StandardScaler(with_mean=False).fit_transform(X_all[idx_train])
 Y_train = one_hot(y_train)
 P0 = np.tile(Y_train.mean(axis=0), (X_train.shape[0], 1))
 grad_norms = np.linalg.norm(np.asarray(X_train.T @ (P0 - Y_train)) / X_train.shape[0], axis=1)
-alpha_grids = np.array([grad_norms.max() / l1r * np.geomspace(1, ALPHA_MIN_RATIO, N_ALPHAS)
-                        for l1r in L1_RATIOS])
-for l1r, grid in zip(L1_RATIOS, alpha_grids):
-    print(f"l1_ratio {l1r}: alpha from {grid[0]:.3g} to {grid[-1]:.3g}")
+# Each grid: N_ALPHAS values evenly spaced from just below alpha_max down to ALPHA_MIN (alpha_max
+# itself, the empty model, is left out)
+alpha_maxes = grad_norms.max() / np.array(L1_RATIOS)
+if (alpha_maxes <= ALPHA_MIN).any():
+    raise ValueError(f"alpha_max ({alpha_maxes.min():.3g}) is below ALPHA_MIN ({ALPHA_MIN}): lower ALPHA_MIN")
+alpha_grids = np.array([a_max - (a_max - ALPHA_MIN) * np.arange(1, N_ALPHAS + 1) / N_ALPHAS
+                        for a_max in alpha_maxes])
+for l1r, a_max, grid in zip(L1_RATIOS, alpha_maxes, alpha_grids):
+    print(f"l1_ratio {l1r}: alpha_max {a_max:.3g}, alphas " + " ".join(f"{a:.3g}" for a in grid))
 
 # ---------------------- Save
 sp.save_npz(os.path.join(clf_dir, 'X.npz'), X_all, compressed=False)    # uncompressed loads much faster

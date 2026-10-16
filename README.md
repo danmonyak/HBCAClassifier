@@ -67,14 +67,14 @@ The model:
 - **Classes:** the 10 epithelial cell states (`LASP1`–`LASP5`, `LHS1`–`LHS3`, `BMYO1`–`BMYO2`). Every other `level2` label becomes `"Other"`. `"Other"` is by far the largest class (about 460,000 of 803,283 cells), so the results include balanced accuracy and per-class scores as well as accuracy.
 - **Model:** multinomial logistic regression with a group elastic net penalty. Each gene's coefficients across all 11 classes form one group. The lasso part drops whole genes, and the ridge part spreads weight across correlated genes. The intercept isn't penalized.
 - **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data only (not centred, which keeps the matrix sparse).
-- **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` (10 values per `l1_ratio`) and `l1_ratio` (0.25, 0.5, 0.75, 1). Models are scored by held-out log-loss. The best pair is refitted on the whole training set and evaluated on the test set.
+- **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` and `l1_ratio` (0.25, 0.5, 0.75, 1). For each `l1_ratio`, there are 10 alphas, evenly spaced on a linear scale from just below alpha_max (the smallest alpha that drops every gene) down to 0.01. So most of them are near the top, where models keep few genes. The aim is a model with few genes. Models are scored by held-out log-loss. The best pair is refitted on the whole training set and evaluated on the test set.
 
 ### 03_Level2_Classifier_Prep.py
 
 - **Needs:** from `02`, in `<STORAGE_DIR>/<run>/`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`.
 - **Produces:** in `<STORAGE_DIR>/<run>/reed_level2_classifier/`: `X.npz` (cells x genes expression, unscaled) and `prep.npz` (the labels, the train/test split, each training cell's CV fold, and the alpha grid for each `l1_ratio`).
 
-The alpha grids are set once from the whole training set, so every fold uses the same values and their results can be averaged. `Run_03.sh`: 4 CPUs, 64G.
+The alpha grids are set once from the whole training set, so every fold uses the same values and their results can be averaged. alpha_max depends on the data and the `l1_ratio` (about 0.25 / `l1_ratio` on the 300-per-class test), so each `l1_ratio` has its own grid. The 0.01 floor (`ALPHA_MIN`) is shared. The log lists every value. `Run_03.sh`: 4 CPUs, 64G.
 
 ### 04_Level2_Classifier_CV.py
 
@@ -101,7 +101,7 @@ The log has the test accuracy, balanced accuracy, macro F1 and log-loss, and the
 sbatch Run_05.sh 90 none 200
 ```
 
-(`none` means no cell cap.) **The cap must match a run whose `03` and `04` have finished:** `none` needs the full-data CV, and a capped run needs the same cap (e.g. `sbatch Run_05.sh 90 300 50`). If the CV results are missing, `05` stops and lists them. **Very small limits can select the empty model:** the largest alpha in each grid drops every gene, so if no other model is small enough, `05` picks that one (0 genes, every cell predicted as `Other`). This reuses the results of `03` and `04` (no need to rerun them), but it does refit the model. Every output except `cv_summary.csv` gets a `_max<N>genes` suffix, e.g. `test_confusion_matrix_max200genes.png`, so it doesn't overwrite the unconstrained model. The cap applies to the genes kept averaged over the CV folds, so the refitted model can keep a few more or fewer genes. Its count is in the confusion matrix's title.
+(`none` means no cell cap.) **The cap must match a run whose `03` and `04` have finished:** `none` needs the full-data CV, and a capped run needs the same cap (e.g. `sbatch Run_05.sh 90 300 50`). If the CV results are missing, `05` stops and lists them. If no model is small enough, `05` stops and says how many genes the smallest one keeps. This reuses the results of `03` and `04` (no need to rerun them), but it does refit the model. Every output except `cv_summary.csv` gets a `_max<N>genes` suffix, e.g. `test_confusion_matrix_max200genes.png`, so it doesn't overwrite the unconstrained model. The cap applies to the genes kept averaged over the CV folds, so the refitted model can keep a few more or fewer genes. Its count is in the confusion matrix's title.
 
 ### The model code
 

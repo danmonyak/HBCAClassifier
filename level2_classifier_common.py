@@ -33,12 +33,15 @@ N_FOLDS = 5              # cross-validation folds (on the training set)
 RANDOM_STATE = 0
 
 # Penalty grid. l1_ratio = 1 is pure group lasso, 0 would be pure ridge.
-# For each l1_ratio, alpha runs from alpha_max (every gene dropped) down to alpha_max * ALPHA_MIN_RATIO.
+# For each l1_ratio, N_ALPHAS values evenly spaced (on a linear scale) from just below alpha_max down
+# to ALPHA_MIN. alpha_max is the smallest alpha that drops every gene, so it is left out (that model
+# is empty). Linear spacing puts most values near the top, where models keep few genes, and fewer
+# toward ALPHA_MIN, where they keep many. alpha_max depends on l1_ratio and the data (set in 03).
 # 04 runs one SLURM array task per (fold, l1_ratio): N_FOLDS * len(L1_RATIOS) tasks.
 # **If you change N_FOLDS or L1_RATIOS, change the --array line in Run_04.sh to match.**
 L1_RATIOS = [0.25, 0.5, 0.75, 1.0]
 N_ALPHAS = 10
-ALPHA_MIN_RATIO = 1e-3
+ALPHA_MIN = 0.01
 
 # Solver settings (FISTA in multinomial_group_enet_torch.py)
 TOL = 1e-6               # stop when the largest optimality violation is below this
