@@ -11,7 +11,7 @@ sbatch Run_01.sh [cellranger_run_name]   # 01_Analysis.R
 sbatch Run_02.sh [cellranger_run_name]   # 02_Marker_Gene_Matrices.R
 ```
 
-The two scripts don't depend on each other.
+The two scripts don't depend on each other. `03_Level2_Classifier.ipynb` needs `02`'s output, and is run by hand in Jupyter (see below).
 
 ## 01_Analysis.R
 
@@ -47,6 +47,26 @@ What it does:
 - Loads the atlas as `reed`, the same way as `01_Analysis.R`. **The values are log-normalized expression**: the atlas's `X`, the only matrix `read_h5ad` loads. The file also has raw counts in a separate `raw` slot, which isn't loaded.
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
+
+## 03_Level2_Classifier.ipynb
+
+A Jupyter notebook that predicts each atlas cell's epithelial cell state from its expression of the cell state marker genes. Run it from inside this folder, in the base conda environment.
+
+- **Needs:** from `02_Marker_Gene_Matrices.R`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`.
+- **Produces:**
+  - `<STORAGE_DIR>/<run>/reed_level2_classifier_cv.csv`: mean cross-validation results for every `l1_ratio` and `alpha`.
+  - `<STORAGE_DIR>/<run>/reed_level2_classifier_coef.csv`: the fitted coefficients (one row per feature, one column per class, plus an `importance` column).
+  - `figures/<run>/03/cv_curves.png` and `test_confusion_matrix.png`.
+
+What it does:
+
+- **Classes:** the 10 epithelial cell states (`LASP1`–`LASP5`, `LHS1`–`LHS3`, `BMYO1`–`BMYO2`). Every other `level2` label becomes `"Other"`. `"Other"` is by far the largest class (about 460,000 of 803,283 cells), so the notebook reports balanced accuracy and per-class results as well as accuracy.
+- **Model:** multinomial logistic regression with a group elastic net penalty. Each gene's coefficients across all 11 classes form one group. The lasso part drops whole genes, and the ridge part spreads weight across correlated genes.
+- **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data (not centred, which keeps the matrix sparse), plus an intercept column that isn't penalized.
+- **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` (10 values per `l1_ratio`) and `l1_ratio` (0.25, 0.5, 0.75, 1). Models are scored by held-out log-loss. The best pair is refitted on the whole training set and evaluated on the test set.
+- **This is slow on the full atlas:** about 560,000 training cells x about 3,000 genes, fitted 5 folds x 40 times. `MAX_CELLS_PER_CLASS` in the settings cell caps the cells per class, which makes tuning much faster.
+
+`multinomial_group_lasso.py` holds the model code. skglm has no multinomial loss, so it adds one (`MultinomialLogistic`) for skglm's multi-task solver, plus the penalty (`WeightedGroupElasticNet`). Both were checked against scikit-learn on small simulated data: unpenalized and pure-ridge fits give the same probabilities to within 1e-7.
 
 ## Other files
 
