@@ -97,7 +97,6 @@ get_marker_matrix <- function(markers, name) {
 
 celltype.marker.expr <- get_marker_matrix(celltype.markers, "Cell type")
 state.marker.expr <- get_marker_matrix(state.markers, "Cell state")
-# celltype.labels <- reed$
 
 # ---------------------- Analysis
 # Save figures to figure_outdir_cur, e.g.
