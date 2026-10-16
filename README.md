@@ -11,7 +11,7 @@ sbatch Run_01.sh [cellranger_run_name]   # 01_Analysis.R
 sbatch Run_02.sh [cellranger_run_name]   # 02_Marker_Gene_Matrices.R
 ```
 
-The two scripts don't depend on each other. `03_Level2_Classifier.ipynb` needs `02`'s output, and is run by hand in Jupyter (see below).
+The two scripts don't depend on each other. The level2 classifier (`03`, `04`, `05`) needs `02`'s output (see below for how to run it).
 
 ## 01_Analysis.R
 
@@ -48,29 +48,75 @@ What it does:
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
-## 03_Level2_Classifier.ipynb
+## The level2 classifier: 03, 04 and 05
 
-A Jupyter notebook that predicts each atlas cell's epithelial cell state from its expression of the cell state marker genes. Run it from inside this folder, in the base conda environment.
+Three Python steps that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. They run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run them in order, from inside this folder:
 
-- **Needs:** from `02_Marker_Gene_Matrices.R`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`.
-- **Produces:**
-  - `<STORAGE_DIR>/<run>/reed_level2_classifier_cv.csv`: mean cross-validation results for every `l1_ratio` and `alpha`.
-  - `<STORAGE_DIR>/<run>/reed_level2_classifier_coef.csv`: the fitted coefficients (one row per feature, one column per class, plus an `importance` column).
-  - `figures/<run>/03/cv_curves.png` and `test_confusion_matrix.png`.
+```
+a=$(sbatch --parsable Run_03.sh [run] [cap])
+b=$(sbatch --parsable --dependency=afterok:$a --kill-on-invalid-dep=yes Run_04.sh [run] [cap])
+sbatch --dependency=afterok:$b --kill-on-invalid-dep=yes Run_05.sh [run] [cap]
+```
 
-What it does:
+`--dependency=afterok` starts each step only if the previous one succeeded. **Without `--kill-on-invalid-dep=yes`, a step whose predecessor failed stays in the queue forever as `DependencyNeverSatisfied`**, and you have to `scancel` it yourself.
 
-- **Classes:** the 10 epithelial cell states (`LASP1`–`LASP5`, `LHS1`–`LHS3`, `BMYO1`–`BMYO2`). Every other `level2` label becomes `"Other"`. `"Other"` is by far the largest class (about 460,000 of 803,283 cells), so the notebook reports balanced accuracy and per-class results as well as accuracy.
-- **Model:** multinomial logistic regression with a group elastic net penalty. Each gene's coefficients across all 11 classes form one group. The lasso part drops whole genes, and the ridge part spreads weight across correlated genes.
-- **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data (not centred, which keeps the matrix sparse), plus an intercept column that isn't penalized.
+Each takes two optional arguments: `cellranger_run_name` (default `90`) and `max_cells_per_class` (default: every cell). The cap keeps at most that many cells of each class, for a quicker run. **A capped run writes to its own folder, `reed_level2_classifier_cap<N>/`, and its figures to `figures/<run>/05/cap<N>/`,** so it never overwrites the full run.
+
+The model:
+
+- **Classes:** the 10 epithelial cell states (`LASP1`–`LASP5`, `LHS1`–`LHS3`, `BMYO1`–`BMYO2`). Every other `level2` label becomes `"Other"`. `"Other"` is by far the largest class (about 460,000 of 803,283 cells), so the results include balanced accuracy and per-class scores as well as accuracy.
+- **Model:** multinomial logistic regression with a group elastic net penalty. Each gene's coefficients across all 11 classes form one group. The lasso part drops whole genes, and the ridge part spreads weight across correlated genes. The intercept isn't penalized.
+- **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data only (not centred, which keeps the matrix sparse).
 - **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` (10 values per `l1_ratio`) and `l1_ratio` (0.25, 0.5, 0.75, 1). Models are scored by held-out log-loss. The best pair is refitted on the whole training set and evaluated on the test set.
-- **This is slow on the full atlas:** about 560,000 training cells x about 3,000 genes, fitted 5 folds x 40 times. `MAX_CELLS_PER_CLASS` in the settings cell caps the cells per class, which makes tuning much faster.
 
-`multinomial_group_lasso.py` holds the model code. skglm has no multinomial loss, so it adds one (`MultinomialLogistic`) for skglm's multi-task solver, plus the penalty (`WeightedGroupElasticNet`). Both were checked against scikit-learn on small simulated data: unpenalized and pure-ridge fits give the same probabilities to within 1e-7.
+### 03_Level2_Classifier_Prep.py
+
+- **Needs:** from `02`, in `<STORAGE_DIR>/<run>/`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`.
+- **Produces:** in `<STORAGE_DIR>/<run>/reed_level2_classifier/`: `X.npz` (cells x genes expression, unscaled) and `prep.npz` (the labels, the train/test split, each training cell's CV fold, and the alpha grid for each `l1_ratio`).
+
+The alpha grids are set once from the whole training set, so every fold uses the same values and their results can be averaged. `Run_03.sh`: 4 CPUs, 64G.
+
+### 04_Level2_Classifier_CV.py
+
+- **Needs:** `X.npz` and `prep.npz` from `03`.
+- **Produces:** `cv/fold<k>_l1ratio<r>.csv` in the same folder: one row per alpha, with the held-out log-loss, accuracy, balanced accuracy, genes kept and whether the solver converged.
+
+`Run_04.sh` is a SLURM array of 20 tasks, one per fold and `l1_ratio`. Each fits the whole alpha path on 16 CPUs (48G). **If you change `N_FOLDS` or `L1_RATIOS`, change the `--array` line to match.**
+
+### 05_Level2_Classifier_Fit.py
+
+- **Needs:** `X.npz`, `prep.npz` and all 20 `cv/` files. It stops and lists them if any are missing.
+- **Produces:** in the same folder:
+  - `cv_summary.csv`: the mean CV results for every `l1_ratio` and `alpha`.
+  - `coef.csv`: the fitted coefficients (the intercept, then one row per gene; one column per class, plus an `importance` column).
+  - `test_report.csv`: precision, recall and F1 per class on the test set.
+  - `model.npz`: `W`, `b`, the genes, classes and per-gene `scale`, to apply the model to other cells: probabilities = softmax((x / scale) @ W + b), with x the log-normalized expression of the same genes.
+  - In `figures/<run>/05/`: `cv_curves.png` and `test_confusion_matrix.png`.
+
+The log has the test accuracy, balanced accuracy and log-loss, and the top genes. `Run_05.sh`: 16 CPUs, 48G.
+
+### The model code
+
+- `multinomial_group_enet_torch.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`).
+- `multinomial_group_lasso.py` is the same model for skglm. The scripts don't use it. It's kept to check the PyTorch solver. The two agreed on simulated data and on 300 real cells (probabilities within about 1e-7). **skglm is far slower:** on 20,000 cells, one alpha took up to 47 minutes with skglm, against 11 seconds with PyTorch on 16 CPUs. The model was also checked against scikit-learn: unpenalized and pure-ridge fits give the same probabilities to within 1e-7.
+
+### The torch environment
+
+The classifier steps need PyTorch, which is in its own conda environment, `torch` (about 7 GB):
+
+```
+conda create -y -n torch python=3.12 numpy scipy pandas scikit-learn h5py openpyxl matplotlib seaborn ipykernel pip
+conda activate torch
+PYTHONNOUSERSITE=1 python -m pip install torch skglm
+```
+
+**Use `python -m pip`, not `pip`.** Otherwise the cluster's system `pip` may be found first, and it installs into `~/.local` instead of the environment.
 
 ## Other files
 
 - `config.R`: settings for this folder (`figure_outdir`, point sizes, `rng.seed`). It sources the shared `RNAseq_SingleCell/config.R`.
 - `Run_02.sh`: SLURM script for `02_Marker_Gene_Matrices.R`, with the same resources as `Run_01.sh`.
+- `level2_classifier_common.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance) and shared helpers.
+- `Run_03.sh`, `Run_04.sh`, `Run_05.sh`: SLURM scripts for the classifier steps (`torch` environment).
 - `Run_01.sh`: SLURM script for `01_Analysis.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment. 100G matches `Cell_Type_Assignment/Run_02.sh`, which also loads the atlas.
 - `output_files/`, `error_files/`: SLURM stdout and stderr.
