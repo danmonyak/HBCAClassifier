@@ -47,6 +47,16 @@ ALPHA_MIN = 0.01
 TOL = 1e-6               # stop when the largest optimality violation is below this
 MAX_ITER = 20000         # per alpha
 
+# Neural network on the selected genes (06). Trained on the training set minus a validation part,
+# which decides when to stop (early stopping). The loss is weighted by inverse class frequency.
+NN_VAL_SIZE = 0.1        # fraction of the training set held back for validation
+NN_HIDDEN = [64, 32]     # units in each hidden layer
+NN_DROPOUT = 0.1
+NN_LEARNING_RATE = 1e-3  # Adam
+NN_BATCH_SIZE = 512
+NN_MAX_EPOCHS = 500
+NN_PATIENCE = 20         # stop after this many epochs without a better validation loss
+
 
 # ---------------------- Helpers
 def get_args():

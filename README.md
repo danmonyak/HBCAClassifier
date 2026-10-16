@@ -48,9 +48,9 @@ What it does:
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
-## The level2 classifier: 03, 04 and 05
+## The level2 classifier: 03 to 06
 
-Three Python steps that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. They run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run them in order, from inside this folder:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` then trains a neural network on the genes that `05` selected. All four run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run `03`–`05` in order, from inside this folder:
 
 ```
 a=$(sbatch --parsable Run_03.sh [run] [cap])
@@ -103,6 +103,32 @@ sbatch Run_05.sh 90 none 200
 
 (`none` means no cell cap.) **The cap must match a run whose `03` and `04` have finished:** `none` needs the full-data CV, and a capped run needs the same cap (e.g. `sbatch Run_05.sh 90 300 50`). If the CV results are missing, `05` stops and lists them. If no model is small enough, `05` stops and says how many genes the smallest one keeps. This reuses the results of `03` and `04` (no need to rerun them), but it does refit the model. Every output except `cv_summary.csv` gets a `_max<N>genes` suffix, e.g. `test_confusion_matrix_max200genes.png`, so it doesn't overwrite the unconstrained model. The cap applies to the genes kept averaged over the CV folds, so the refitted model can keep a few more or fewer genes. Its count is in the confusion matrix's title.
 
+### 06_Level2_NN.py
+
+A dense neural network that predicts the class from only the genes `05` selected. Run it after `05`, with the same arguments, usually with a gene limit:
+
+```
+sbatch Run_05.sh 90 300 40
+sbatch Run_06.sh 90 300 40
+```
+
+- **Needs:** `X.npz` and `prep.npz` from `03`, and `model[_max<G>genes].npz` from `05`.
+- **Produces:** in the classifier folder, all with the `_max<G>genes` suffix when a gene limit is given:
+  - `nn.pt`: the network's weights, plus its genes, classes and input scaling (mean and SD per gene).
+  - `nn_comparison.csv`: test log-loss, accuracy, balanced accuracy and macro F1, for the network and the baseline.
+  - `nn_test_report.csv` and `baseline_test_report.csv`: per-class precision, recall and F1 on the test set.
+  - In `figures/<run>/06/` (or `.../06/cap<N>/`): `nn_training_curve.png` (training and validation loss per epoch), `nn_test_confusion_matrix.png` and `baseline_test_confusion_matrix.png`.
+
+What it does:
+
+- **Genes:** the nonzero rows of `05`'s model. They were chosen using only the training set, so the test set stays untouched.
+- **Data:** the training set from `03`, minus 10% held back for validation (stratified). Each gene is centred and scaled on the remaining training part.
+- **Network:** dense layers of 64 and 32 units, with ReLU and 10% dropout, and one output per class. It's trained with Adam (learning rate 1e-3, batches of 512) on cross-entropy. Training stops once the validation loss hasn't improved for 20 epochs, and the best epoch's weights are kept.
+- **Baseline:** an unpenalized multinomial logistic regression on the same genes and cells. **If the network doesn't beat it, the nonlinearity isn't adding anything.**
+- **Class weights:** both models weight each class by its inverse frequency in the training data, so every class counts equally, as in balanced accuracy and macro F1. Without weights, `"Other"` (57% of the full atlas) would dominate.
+
+The network settings (`NN_HIDDEN`, `NN_DROPOUT`, `NN_LEARNING_RATE`, `NN_BATCH_SIZE`, `NN_MAX_EPOCHS`, `NN_PATIENCE`, `NN_VAL_SIZE`) are in `level2_classifier_common.py`. `Run_06.sh`: 8 CPUs, 32G.
+
 ### The model code
 
 - `multinomial_group_enet_torch.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`).
@@ -125,6 +151,6 @@ PYTHONNOUSERSITE=1 python -m pip install torch skglm
 - `config.R`: settings for this folder (`figure_outdir`, point sizes, `rng.seed`). It sources the shared `RNAseq_SingleCell/config.R`.
 - `Run_02.sh`: SLURM script for `02_Marker_Gene_Matrices.R`, with the same resources as `Run_01.sh`.
 - `level2_classifier_common.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance) and shared helpers.
-- `Run_03.sh`, `Run_04.sh`, `Run_05.sh`: SLURM scripts for the classifier steps (`torch` environment).
+- `Run_03.sh` to `Run_06.sh`: SLURM scripts for the classifier steps (`torch` environment).
 - `Run_01.sh`: SLURM script for `01_Analysis.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment. 100G matches `Cell_Type_Assignment/Run_02.sh`, which also loads the atlas.
 - `output_files/`, `error_files/`: SLURM stdout and stderr.
