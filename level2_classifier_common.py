@@ -72,11 +72,18 @@ KNN_GAMMAS = [0, 0.25, 0.5, 0.75, 1]   # 0 = plain vote, 1 = full inverse-freque
 KNN_BETAS = [0, 0.5, 1]                # gene scaling: divide by SD^beta
 KNN_QUERY_BATCH = 256                  # query cells per batch in the neighbour search (memory)
 
-# UMAP of the epithelial cells on the selected genes (08)
+# UMAP of the atlas cells on the selected genes (08)
 UMAP_N_NEIGHBORS = 15
 UMAP_MIN_DIST = 0.3
 UMAP_OTHER_SAMPLE = 100000   # "Other" cells to include (a random sample); every epithelial cell is included
 
+
+# TRANSPLANT (09, 10): take the genes from a capped run's tier-1 model and retrain the tier-2 models
+# on the full data, with tempered class weights (1/class frequency)^gamma, gamma tuned on validation.
+# **If you change TRANSPLANT_GAMMAS, change the --array line in Run_09.sh to match** (one task per gamma, plus KNN).
+TRANSPLANT_SOURCE_CAP = 20000
+TRANSPLANT_SOURCE_MAX_GENES = 40
+TRANSPLANT_GAMMAS = [0, 0.25, 0.5, 0.75, 1]
 
 # ---------------------- Helpers
 def get_args():

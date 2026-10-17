@@ -48,9 +48,9 @@ What it does:
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
-## The level2 classifier: 03 to 08
+## The level2 classifier: 03 to 10
 
-Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. All five run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run `03`–`05` in order, from inside this folder:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes. All five run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run `03`–`05` in order, from inside this folder:
 
 ```
 a=$(sbatch --parsable Run_03.sh [run] [cap])
@@ -176,6 +176,28 @@ sbatch Run_08.sh 90 20000 40
 
 Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they differ only in their genes. Genes are centred and scaled to unit variance over the plotted cells. **UMAP itself isn't seeded,** so it runs on all the job's cores, and its layout differs slightly each time it's run. **It runs in the base conda environment**, because the `torch` environment doesn't have umap-learn. The UMAP settings (`UMAP_N_NEIGHBORS`, `UMAP_MIN_DIST`, `UMAP_OTHER_SAMPLE`) are in `level2_classifier_common.py`. `Run_08.sh`: 8 CPUs, 64G.
 
+### TRANSPLANT: 09_Transplant_Tier2.py and 10_Transplant_Summary.py
+
+Retrains the tier-2 models on the full data, on the genes that a capped run's tier-1 model chose. By default these are the 25 genes from the 20,000-per-class run with a 40-gene limit (`TRANSPLANT_SOURCE_CAP`, `TRANSPLANT_SOURCE_MAX_GENES`). The reason: on the full data, tier 1 chose a worse gene set (test balanced accuracy about 0.75 against 0.84). A likely cause is that inverse-frequency class weights become extreme there, about 2,200:1. The UMAPs (`08`) show the same thing.
+
+```
+a=$(sbatch --parsable Run_09.sh [run])
+sbatch --dependency=afterok:$a --kill-on-invalid-dep=yes Run_10.sh [run]
+```
+
+- **Needs:** `X.npz` and `prep.npz` from `03` on the full data, and `prep.npz` and `model_max<G>genes.npz` from the source run.
+- **Produces:** in `<STORAGE_DIR>/<run>/reed_level2_transplant/`:
+  - From `09`: `gamma<g>.npz` per network/baseline task (validation scores and test probabilities), `nn_gamma<g>.pt`, `nn_training_curve_gamma<g>.csv`, `knn.npz`, `knn_tuning.csv` and `test_cells.csv.gz`.
+  - From `10`: `gamma_tuning.csv`, `transplant_comparison.csv` (test log-loss, accuracy, balanced accuracy and macro F1 for the three chosen models), and `nn_test_report.csv`, `baseline_test_report.csv` and `knn_test_report.csv`. In `figures/<run>/10/`: `gamma_tuning.png` and a test confusion matrix per model.
+
+What it does:
+
+- **Cells:** the full run's training set minus a stratified 10% validation part (as in `06`), for training and tuning. **The test set is the full run's test set minus every cell in the source run's training set,** because the source run's tier-1 model chose the genes using those cells.
+- **Tempered class weights:** each class is weighted by (1 / its frequency)^gamma, with gamma in `TRANSPLANT_GAMMAS` (0, 0.25, 0.5, 0.75, 1). `Run_09.sh` is an array with one task per gamma, each training the network and the unpenalized logistic regression, plus one task for KNN, which tunes its own k, gamma and beta as in `07`. **If you change `TRANSPLANT_GAMMAS`, change the `--array` line to match.**
+- **Choosing:** `10` picks each model's gamma by validation balanced accuracy, then scores the test set once.
+
+The network training and KNN votes come from `level2_tier2_models.py`, which copies the code of `06` and `07` as functions (`06` and `07` keep their own copies). `Run_09.sh`: 16 CPUs, 32G per task. `Run_10.sh`: 4 CPUs, 16G.
+
 ### The model code
 
 - `multinomial_group_enet_torch.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`). It takes optional per-cell weights (`sample_weight`). The weighted version was checked two ways: against scikit-learn's weighted ridge fit (probabilities within 1e-7), and against an unweighted fit on duplicated cells (within 1e-9).
@@ -198,6 +220,7 @@ PYTHONNOUSERSITE=1 python -m pip install torch skglm
 - `config.R`: settings for this folder (`figure_outdir`, point sizes, `rng.seed`). It sources the shared `RNAseq_SingleCell/config.R`.
 - `Run_02.sh`: SLURM script for `02_Marker_Gene_Matrices.R`, with the same resources as `Run_01.sh`.
 - `level2_classifier_common.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance) and shared helpers.
-- `Run_03.sh` to `Run_08.sh`: SLURM scripts for the classifier steps (`torch` environment, except `Run_08.sh`: base).
+- `Run_03.sh` to `Run_10.sh`: SLURM scripts for the classifier steps (`torch` environment, except `Run_08.sh`: base).
+- `level2_tier2_models.py`: the tier-2 network training and KNN votes as functions, used by `09`.
 - `Run_01.sh`: SLURM script for `01_Analysis.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment. 100G matches `Cell_Type_Assignment/Run_02.sh`, which also loads the atlas.
 - `output_files/`, `error_files/`: SLURM stdout and stderr.
