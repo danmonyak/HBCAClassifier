@@ -57,6 +57,13 @@ NN_BATCH_SIZE = 512
 NN_MAX_EPOCHS = 500
 NN_PATIENCE = 20         # stop after this many epochs without a better validation loss
 
+# Weighted KNN on the selected genes (07). Same training / validation / test cells as 06.
+# Each neighbour's vote is weighted by 1 / distance times (1 / frequency of its class)^gamma.
+# k and gamma are tuned together on the validation set, by balanced accuracy.
+KNN_K = [5, 10, 25, 50, 100, 200, 400]
+KNN_GAMMAS = [0, 0.25, 0.5, 0.75, 1]   # 0 = plain vote, 1 = full inverse-frequency class weights
+KNN_QUERY_BATCH = 256                  # query cells per batch in the neighbour search (memory)
+
 
 # ---------------------- Helpers
 def get_args():
