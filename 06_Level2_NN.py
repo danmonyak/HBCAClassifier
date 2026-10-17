@@ -19,7 +19,10 @@
 #           in figures/<run>/06/ (or .../06/cap<N>/): nn_training_curve.png (training and validation
 #           loss per epoch), nn_test_confusion_matrix.png and baseline_test_confusion_matrix.png
 #
-# Usage: python 06_Level2_NN.py [cellranger_run_name] [max_cells_per_class] [max_genes]
+# Optional 4th argument: the name of another network shape in NN_ARCHITECTURES (e.g. deep). Every
+# output then gets an extra _<name> suffix, so the default network's results are kept.
+#
+# Usage: python 06_Level2_NN.py [cellranger_run_name] [max_cells_per_class] [max_genes] [architecture]
 #        e.g. after `sbatch Run_05.sh 90 300 40`: sbatch Run_06.sh 90 300 40
 
 import copy
@@ -41,7 +44,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_DROPOUT,
+from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
                                       NN_LEARNING_RATE, NN_BATCH_SIZE, NN_MAX_EPOCHS, NN_PATIENCE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       mean_log_loss, set_threads, get_class_weights)
@@ -52,6 +55,11 @@ log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 cellranger_run_name, max_cells_per_class = get_args()
 max_genes = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none') else None
 suffix = '' if max_genes is None else f'_max{max_genes}genes'     # matches 05's output names
+architecture = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] not in ('', 'none', 'default') else None
+if architecture is not None and architecture not in NN_ARCHITECTURES:
+    raise ValueError(f"unknown architecture {architecture!r}: choose from {list(NN_ARCHITECTURES)}")
+hidden = NN_HIDDEN if architecture is None else NN_ARCHITECTURES[architecture]
+out = suffix + ('' if architecture is None else f'_{architecture}')   # this run's output file suffix
 clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
 figure_outdir_cur = get_figure_dir(cellranger_run_name, max_cells_per_class, '06')
 threads = set_threads()
@@ -122,14 +130,14 @@ log(f"baseline fitted ({baseline.n_iter_[0]} iterations)")
 # predict_proba's columns follow baseline.classes_ (alphabetical): reorder them to CLASSES
 P_base = baseline.predict_proba(X_test)[:, pd.Index(baseline.classes_).get_indexer(CLASSES)]
 pred_base, metrics_base = evaluate('Logistic regression (unpenalized)', P_base)
-save_report(pred_base, f'baseline_test_report{suffix}.csv')
+save_report(pred_base, f'baseline_test_report{out}.csv')
 save_confusion_matrix(pred_base, f'Logistic regression, {len(genes)} genes: test set',
-                      f'baseline_test_confusion_matrix{suffix}.png')
+                      f'baseline_test_confusion_matrix{out}.png')
 
 # ---------------------- Neural network
 # Dense layers with ReLU and dropout, then one output per class (softmax is inside the loss)
 layers, n_in = [], len(genes)
-for n_out in NN_HIDDEN:
+for n_out in hidden:
     layers += [nn.Linear(n_in, n_out), nn.ReLU(), nn.Dropout(NN_DROPOUT)]
     n_in = n_out
 layers.append(nn.Linear(n_in, len(CLASSES)))
@@ -178,23 +186,24 @@ ax.axvline(best_epoch, color='grey', ls='--', lw=1, label=f'kept (epoch {best_ep
 ax.set(xlabel='Epoch', ylabel='Class-weighted cross-entropy', title=f'Neural network, {len(genes)} genes')
 ax.legend()
 fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, f'nn_training_curve{suffix}.png'), dpi=200)
+fig.savefig(os.path.join(figure_outdir_cur, f'nn_training_curve{out}.png'), dpi=200)
 plt.close(fig)
 
 with torch.no_grad():
     P_nn = torch.softmax(net(to_tensor(X_test)), dim=1).numpy().astype(np.float64)
-pred_nn, metrics_nn = evaluate('Neural network', P_nn)
-save_report(pred_nn, f'nn_test_report{suffix}.csv')
+nn_name = 'Neural network' + ('' if architecture is None else f", {architecture} ({'-'.join(map(str, hidden))})")
+pred_nn, metrics_nn = evaluate(nn_name, P_nn)
+save_report(pred_nn, f'nn_test_report{out}.csv')
 save_confusion_matrix(pred_nn, f'Neural network, {len(genes)} genes: test set',
-                      f'nn_test_confusion_matrix{suffix}.png')
+                      f'nn_test_confusion_matrix{out}.png')
 
 # ---------------------- Compare and save
 comparison = pd.DataFrame([metrics_base, metrics_nn])
-comparison.to_csv(os.path.join(clf_dir, f'nn_comparison{suffix}.csv'), index=False)
+comparison.to_csv(os.path.join(clf_dir, f'nn_comparison{out}.csv'), index=False)
 print("\nTest set (log-loss is class-weighted):")
 print(comparison.round(4).to_string(index=False))
 
-torch.save(dict(state_dict=net.state_dict(), hidden=NN_HIDDEN, dropout=NN_DROPOUT, genes=list(genes),
+torch.save(dict(state_dict=net.state_dict(), hidden=hidden, dropout=NN_DROPOUT, genes=list(genes),
                 classes=list(CLASSES), scaler_mean=scaler.mean_, scaler_scale=scaler.scale_),
-           os.path.join(clf_dir, f'nn{suffix}.pt'))
+           os.path.join(clf_dir, f'nn{out}.pt'))
 log("done")

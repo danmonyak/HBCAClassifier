@@ -128,7 +128,15 @@ What it does:
 - **Baseline:** an unpenalized multinomial logistic regression on the same genes and cells. **If the network doesn't beat it, the nonlinearity isn't adding anything.**
 - **Class weights:** both models weight each class by its inverse frequency in the training data, so every class counts equally, as in balanced accuracy and macro F1. The selection model in `04`/`05` uses the same weights. Without weights, `"Other"` (57% of the full atlas) would dominate.
 
-The network settings (`NN_HIDDEN`, `NN_DROPOUT`, `NN_LEARNING_RATE`, `NN_BATCH_SIZE`, `NN_MAX_EPOCHS`, `NN_PATIENCE`, `NN_VAL_SIZE`) are in `level2_classifier_common.py`. `Run_06.sh`: 8 CPUs, 32G.
+The network settings (`NN_HIDDEN`, `NN_DROPOUT`, `NN_LEARNING_RATE`, `NN_BATCH_SIZE`, `NN_MAX_EPOCHS`, `NN_PATIENCE`, `NN_VAL_SIZE`) are in `level2_classifier_common.py`.
+
+**Other network shapes:** an optional fourth argument names another hidden-layer layout from `NN_ARCHITECTURES` in `level2_classifier_common.py`. Every output, the baseline's included, then gets an extra `_<name>` suffix, so the default network's results are kept. For example, `deep` has five hidden layers (64, 64, 32, 32, 16):
+
+```
+sbatch Run_06.sh 90 20000 40 deep
+```
+
+Tested with 40 genes, it was no better than the default 64 → 32 network: test balanced accuracy 0.835 vs 0.848 at 2,000 cells per class, and 0.843 vs 0.842 at 20,000. `Run_06.sh`: 8 CPUs, 32G.
 
 ### 07_Level2_KNN.py
 

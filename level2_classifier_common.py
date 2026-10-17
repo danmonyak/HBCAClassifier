@@ -51,6 +51,11 @@ MAX_ITER = 20000         # per alpha
 # which decides when to stop (early stopping). The loss is weighted by inverse class frequency.
 NN_VAL_SIZE = 0.1        # fraction of the training set held back for validation
 NN_HIDDEN = [64, 32]     # units in each hidden layer
+# Other network shapes 06 can train instead, chosen by name (its 4th argument). Their outputs get a
+# _<name> suffix, so they never overwrite the default network's.
+NN_ARCHITECTURES = {
+    'deep': [64, 64, 32, 32, 16],
+}
 NN_DROPOUT = 0.1
 NN_LEARNING_RATE = 1e-3  # Adam
 NN_BATCH_SIZE = 512
