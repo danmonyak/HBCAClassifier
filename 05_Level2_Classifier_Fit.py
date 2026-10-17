@@ -2,7 +2,7 @@
 #
 # Step 3 of 3 of the level2 classifier: collects the cross-validation results from 04, picks the
 # (l1_ratio, alpha) pair with the lowest mean held-out log-loss, refits it on the whole training
-# set, and evaluates it on the test set.
+# set, and evaluates it on the test set. Cells are weighted by inverse class frequency, as in 04.
 #
 # Optional max_genes (third argument): pick the best pair among those that keep at most that many
 # genes (mean over the CV folds) instead. Its outputs get a _max<N>genes suffix, so they don't
@@ -42,7 +42,8 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
 
 from level2_classifier_common import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
-                                      one_hot, mean_log_loss, set_threads)
+                                      one_hot, mean_log_loss, set_threads,
+                                      get_class_weights, get_sample_weights)
 from multinomial_group_enet_torch import MultinomialGroupEnet, predict_proba
 
 warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in beta.*')
@@ -116,7 +117,8 @@ X_train, X_test = scaler.transform(X[idx_train]), scaler.transform(X[idx_test])
 y_train, y_test = y[idx_train], y[idx_test]
 del X
 
-model = MultinomialGroupEnet(X_train, one_hot(y_train))
+class_weights = get_class_weights(y_train)     # inverse class frequency, as in 04
+model = MultinomialGroupEnet(X_train, one_hot(y_train), sample_weight=get_sample_weights(y_train, class_weights))
 log(f"refitting on {len(idx_train):,} training cells")
 
 # Warm-start along the grid down to the chosen alpha (faster than fitting it from scratch)
@@ -130,7 +132,7 @@ for alpha in grid[grid >= best_alpha * (1 - 1e-9)]:
 P_test = predict_proba(X_test, W, b)
 pred_test = CLASSES[P_test.argmax(axis=1)]
 print()
-print(f"Test log-loss:          {mean_log_loss(y_test, P_test):.4f}")
+print(f"Test log-loss:          {mean_log_loss(y_test, P_test, class_weights):.4f} (class-weighted)")
 print(f"Test accuracy:          {accuracy_score(y_test, pred_test):.4f}")
 print(f"Test balanced accuracy: {balanced_accuracy_score(y_test, pred_test):.4f}")
 print(f"Test macro F1:          {f1_score(y_test, pred_test, labels=CLASSES, average='macro', zero_division=0):.4f}")

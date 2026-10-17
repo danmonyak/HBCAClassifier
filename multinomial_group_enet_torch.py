@@ -7,10 +7,11 @@
 #
 # The model, with gene coefficients W (n_genes x n_classes), an unpenalized intercept b
 # (one per class) and Y one-hot (n_cells x n_classes):
-#   minimize  (1/n) * sum_i [ logsumexp(x_i W + b) - y_i . (x_i W + b) ]
+#   minimize  (1/n) * sum_i w_i * [ logsumexp(x_i W + b) - y_i . (x_i W + b) ]
 #             + alpha * sum_j ( l1_ratio * ||W[j, :]||_2 + (1 - l1_ratio) / 2 * ||W[j, :]||_2^2 )
 # Each gene's coefficients across all classes form one group: the lasso part drops whole
-# genes, the ridge part spreads weight across correlated genes.
+# genes, the ridge part spreads weight across correlated genes. w_i are optional cell weights
+# (default 1), e.g. inverse class frequencies so that rare classes count as much as common ones.
 #
 # Centering: X is used as if each gene were centred (X - mean), without densifying it.
 # This only shifts the intercept, so the model is the same, but the problem is much better
@@ -40,9 +41,10 @@ class MultinomialGroupEnet:
     Y: one-hot labels, cells x classes (numpy).
     device: "cpu" or "cuda". dtype: torch.float64 (default, exact) or torch.float32 (faster).
     dense: keep X as a dense matrix (faster matrix products if it fits in memory).
+    sample_weight: optional weight per cell (numpy, length n). Default: every cell weight 1.
     """
 
-    def __init__(self, X, Y, device="cpu", dtype=torch.float64, dense=False):
+    def __init__(self, X, Y, device="cpu", dtype=torch.float64, dense=False, sample_weight=None):
         self.device, self.dtype = device, dtype
         self.n, self.p = X.shape
         self.K = Y.shape[1]
@@ -60,6 +62,8 @@ class MultinomialGroupEnet:
             self.Xt = None
         self.mu = torch.as_tensor(mu, dtype=dtype, device=device)         # gene means
         self.Y = torch.as_tensor(Y, dtype=dtype, device=device)
+        w = np.ones(self.n) if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
+        self.w = torch.as_tensor(w, dtype=dtype, device=device).unsqueeze(1)     # n x 1
         self.L = self._lipschitz()
 
     # ---- products with the (implicitly) centred X
@@ -77,15 +81,17 @@ class MultinomialGroupEnet:
         return XtR - torch.outer(self.mu, R.sum(dim=0))
 
     def _lipschitz(self, n_iter=30):
-        """Step-size bound: 0.5 * ||Xc||_2^2 / n (largest singular value by power iteration),
-        and 0.5 for the intercept part. 0.5 bounds the curvature of the softmax loss."""
+        """Step-size bound: 0.5 * ||D^1/2 Xc||_2^2 / n, with D the cell weights (largest singular
+        value by power iteration), and 0.5 * mean(w) for the intercept part. 0.5 bounds the
+        curvature of the softmax loss."""
         v = torch.randn(self.p, 1, dtype=self.dtype, device=self.device,
                         generator=torch.Generator(device=self.device).manual_seed(0))
         for _ in range(n_iter):
-            v = self._Xct_mm(self._Xc_mm(v))
+            v = self._Xct_mm(self.w * self._Xc_mm(v))
             v = v / torch.linalg.norm(v)
-        smax2 = torch.linalg.norm(self._Xc_mm(v)) ** 2
-        return 0.5 * max(smax2.item() / self.n, 1.0)    # the intercept column has ||1||^2 / n = 1
+        smax2 = (self.w * self._Xc_mm(v) ** 2).sum()
+        # the intercept column has sum(w) / n = mean(w)
+        return 0.5 * max(smax2.item() / self.n, self.w.mean().item())
 
     # ---- loss pieces
     def _grad(self, W, b):
@@ -93,8 +99,8 @@ class MultinomialGroupEnet:
         S = self._Xc_mm(W) + b
         logZ = torch.logsumexp(S, dim=1, keepdim=True)
         P = torch.exp(S - logZ)
-        R = (P - self.Y) / self.n
-        loss = (logZ.squeeze(1) - (self.Y * S).sum(dim=1)).mean()
+        R = self.w * (P - self.Y) / self.n
+        loss = (self.w.squeeze(1) * (logZ.squeeze(1) - (self.Y * S).sum(dim=1))).mean()
         return self._Xct_mm(R), R.sum(dim=0), loss
 
     def _prox(self, V, step, l1, l2):
@@ -155,7 +161,8 @@ class MultinomialGroupEnet:
     def alpha_max(self, l1_ratio):
         """Smallest alpha at which every gene is dropped (intercept-only model)."""
         W = torch.zeros(self.p, self.K, dtype=self.dtype, device=self.device)
-        b = torch.log(self.Y.mean(dim=0).clamp(min=1e-12))
+        # the best intercept-only model predicts the (weighted) class frequencies
+        b = torch.log(((self.w * self.Y).sum(dim=0) / self.w.sum()).clamp(min=1e-12))
         gW, _, _ = self._grad(W, b)
         return torch.linalg.norm(gW, dim=1).max().item() / l1_ratio
 

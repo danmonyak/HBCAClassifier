@@ -26,7 +26,8 @@ from sklearn.preprocessing import StandardScaler
 
 from level2_classifier_common import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZE, N_FOLDS, RANDOM_STATE,
                                       L1_RATIOS, N_ALPHAS, ALPHA_MIN,
-                                      get_args, get_classifier_dir, get_figure_dir, one_hot)
+                                      get_args, get_classifier_dir, get_figure_dir, one_hot,
+                                      get_class_weights, get_sample_weights)
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -85,11 +86,13 @@ log(f"train: {len(idx_train):,} cells, test: {len(idx_test):,} cells, {N_FOLDS} 
 # ---------------------- Alpha grids
 # One grid per l1_ratio, from the whole (scaled) training set, shared by all folds so their
 # results can be averaged. alpha_max is the smallest alpha that drops every gene: there the
-# model is the intercept alone, which predicts the class frequencies.
+# model is the intercept alone, which predicts the (class-weighted) class frequencies. Cells are
+# weighted by inverse class frequency, as in the fits (04, 05).
 X_train = StandardScaler(with_mean=False).fit_transform(X_all[idx_train])
 Y_train = one_hot(y_train)
-P0 = np.tile(Y_train.mean(axis=0), (X_train.shape[0], 1))
-grad_norms = np.linalg.norm(np.asarray(X_train.T @ (P0 - Y_train)) / X_train.shape[0], axis=1)
+w = get_sample_weights(y_train, get_class_weights(y_train))[:, None]
+P0 = np.tile((w * Y_train).sum(axis=0) / w.sum(), (X_train.shape[0], 1))
+grad_norms = np.linalg.norm(np.asarray(X_train.T @ (w * (P0 - Y_train))) / X_train.shape[0], axis=1)
 # Each grid: N_ALPHAS values evenly spaced from just below alpha_max down to ALPHA_MIN (alpha_max
 # itself, the empty model, is left out)
 alpha_maxes = grad_norms.max() / np.array(L1_RATIOS)

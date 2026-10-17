@@ -9,6 +9,8 @@
 # coefficients across all classes form one group), fitted with PyTorch on all the job's CPU
 # cores (multinomial_group_enet_torch.py). Genes are scaled to unit variance on the fold's
 # training part only (not centred, which keeps the matrix sparse). The intercept isn't penalized.
+# Cells are weighted by inverse class frequency, so rare classes (e.g. LASP5) count as much as
+# common ones, in the fit and in the held-out log-loss.
 #
 # Needs:    X.npz and prep.npz from 03, in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/
 #           SLURM_ARRAY_TASK_ID (set by SLURM; set it by hand to run one task outside an array)
@@ -29,7 +31,8 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
 from level2_classifier_common import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
-                                      one_hot, mean_log_loss, set_threads)
+                                      one_hot, mean_log_loss, set_threads,
+                                      get_class_weights, get_sample_weights)
 from multinomial_group_enet_torch import MultinomialGroupEnet, predict_proba
 
 # torch warns that sparse CSR support is in beta; it doesn't affect the results
@@ -70,7 +73,10 @@ X_tr, X_va = scaler.transform(X[tr]), scaler.transform(X[va])
 del X
 log(f"fold {k}: fitting on {len(tr):,} cells, scoring on {len(va):,}")
 
-model = MultinomialGroupEnet(X_tr, one_hot(y_tr))
+# Weight cells by inverse class frequency (in this fold's training part), so every class counts
+# equally in the fit and in the held-out log-loss
+class_weights = get_class_weights(y_tr)
+model = MultinomialGroupEnet(X_tr, one_hot(y_tr), sample_weight=get_sample_weights(y_tr, class_weights))
 log("model set up")
 
 # ---------------------- Fit the alpha path and score the held-out fold
@@ -83,7 +89,7 @@ for a_index, alpha in enumerate(alphas):
     pred = CLASSES[P.argmax(axis=1)]
     rows.append(dict(
         fold=k, l1_ratio=l1_ratio, alpha=alpha,
-        log_loss=mean_log_loss(y_va, P),
+        log_loss=mean_log_loss(y_va, P, class_weights),
         accuracy=accuracy_score(y_va, pred),
         balanced_accuracy=balanced_accuracy_score(y_va, pred),
         # macro F1: the mean of the per-class F1 scores, so every class counts equally

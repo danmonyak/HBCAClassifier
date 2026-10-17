@@ -40,7 +40,7 @@ RANDOM_STATE = 0
 # 04 runs one SLURM array task per (fold, l1_ratio): N_FOLDS * len(L1_RATIOS) tasks.
 # **If you change N_FOLDS or L1_RATIOS, change the --array line in Run_04.sh to match.**
 L1_RATIOS = [0.25, 0.5, 0.75, 1.0]
-N_ALPHAS = 10
+N_ALPHAS = 20
 ALPHA_MIN = 0.01
 
 # Solver settings (FISTA in multinomial_group_enet_torch.py)
@@ -96,11 +96,26 @@ def one_hot(y):
     return (y[:, None] == CLASSES[None, :]).astype(np.float64)
 
 
-def mean_log_loss(y, P):
+def get_class_weights(y):
+    """Inverse-frequency weight per class (in the order of CLASSES), from labels y, scaled so the
+    average cell has weight 1. With these weights every class counts equally in the loss."""
+    counts = pd.Series(y).value_counts().reindex(CLASSES).fillna(0).to_numpy()
+    return len(y) / (len(CLASSES) * np.maximum(counts, 1))
+
+
+def get_sample_weights(y, class_weights):
+    """Each cell's weight: its class's weight."""
+    return class_weights[pd.Index(CLASSES).get_indexer(y)]
+
+
+def mean_log_loss(y, P, class_weights=None):
     """Mean cross-entropy of true labels y under probabilities P (columns in the order of CLASSES).
+    With class_weights, a weighted mean, so every class counts equally (like balanced accuracy).
     sklearn's log_loss assumes alphabetical column order, which CLASSES is not."""
     col = pd.Index(CLASSES).get_indexer(y)
-    return -np.mean(np.log(np.clip(P[np.arange(len(y)), col], 1e-15, None)))
+    losses = -np.log(np.clip(P[np.arange(len(y)), col], 1e-15, None))
+    weights = None if class_weights is None else class_weights[col]
+    return np.average(losses, weights=weights)
 
 
 def set_threads():

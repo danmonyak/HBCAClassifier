@@ -44,7 +44,7 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
 from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_DROPOUT,
                                       NN_LEARNING_RATE, NN_BATCH_SIZE, NN_MAX_EPOCHS, NN_PATIENCE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
-                                      mean_log_loss, set_threads)
+                                      mean_log_loss, set_threads, get_class_weights)
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -83,8 +83,7 @@ y_fit, y_val, y_test = y[idx_fit], y[idx_val], y[idx_test]
 log(f"train: {len(idx_fit):,} cells, validation: {len(idx_val):,}, test: {len(idx_test):,}")
 
 # Class weights: inverse frequency in the training part, scaled so the average cell has weight 1
-counts = pd.Series(y_fit).value_counts().reindex(CLASSES).to_numpy()
-class_weights = len(y_fit) / (len(CLASSES) * counts)
+class_weights = get_class_weights(y_fit)
 
 
 def evaluate(name, P):
@@ -92,7 +91,7 @@ def evaluate(name, P):
     pred = CLASSES[P.argmax(axis=1)]
     print(f"\n{name} on the test set:")
     print(classification_report(y_test, pred, labels=CLASSES, zero_division=0))
-    return pred, dict(model=name, log_loss=mean_log_loss(y_test, P),
+    return pred, dict(model=name, log_loss=mean_log_loss(y_test, P, class_weights),
                       accuracy=accuracy_score(y_test, pred),
                       balanced_accuracy=balanced_accuracy_score(y_test, pred),
                       f1_macro=f1_score(y_test, pred, labels=CLASSES, average='macro', zero_division=0))
@@ -192,7 +191,7 @@ save_confusion_matrix(pred_nn, f'Neural network, {len(genes)} genes: test set',
 # ---------------------- Compare and save
 comparison = pd.DataFrame([metrics_base, metrics_nn])
 comparison.to_csv(os.path.join(clf_dir, f'nn_comparison{suffix}.csv'), index=False)
-print("\nTest set (log-loss is unweighted):")
+print("\nTest set (log-loss is class-weighted):")
 print(comparison.round(4).to_string(index=False))
 
 torch.save(dict(state_dict=net.state_dict(), hidden=NN_HIDDEN, dropout=NN_DROPOUT, genes=list(genes),
