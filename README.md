@@ -48,9 +48,9 @@ What it does:
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
-## The level2 classifier: 03 to 07
+## The level2 classifier: 03 to 08
 
-Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. All five run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run `03`–`05` in order, from inside this folder:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. All five run in the `torch` conda environment (see below), and share their settings, in `level2_classifier_common.py`. Run `03`–`05` in order, from inside this folder:
 
 ```
 a=$(sbatch --parsable Run_03.sh [run] [cap])
@@ -163,6 +163,19 @@ What it does:
 
 The settings (`KNN_K`, `KNN_GAMMAS`, `KNN_BETAS`, `KNN_QUERY_BATCH`) are in `level2_classifier_common.py`. The neighbour search is brute force, in batches, with PyTorch on all the job's CPUs. `Run_07.sh`: 16 CPUs, 32G.
 
+### 08_Level2_UMAP.py
+
+One UMAP per tier-1 run, on only the genes that run's tier-1 model selected, coloured by cell state. It includes every cell in the 10 epithelial states (LASP1–5, LHS1–3, BMYO1–2), each state in its own colour, plus a random sample of 100,000 other cells (`UMAP_OTHER_SAMPLE`) in light grey, as `"Other"`, drawn underneath. It shows how well those genes alone separate the states. Run it after `05`, with the same arguments:
+
+```
+sbatch Run_08.sh 90 20000 40
+```
+
+- **Needs:** `model[_max<G>genes].npz` from that run's `05`, and `X.npz` and `prep.npz` from `03` run on the full data (no cap), which hold every cell.
+- **Produces:** `umap[_max<G>genes].csv.gz` in that run's classifier folder (cell, state, UMAP1, UMAP2), and `figures/<run>/08/` (or `.../08/cap<N>/`): `umap[_max<G>genes].png`.
+
+Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they differ only in their genes. Genes are centred and scaled to unit variance over the plotted cells. **UMAP itself isn't seeded,** so it runs on all the job's cores, and its layout differs slightly each time it's run. **It runs in the base conda environment**, because the `torch` environment doesn't have umap-learn. The UMAP settings (`UMAP_N_NEIGHBORS`, `UMAP_MIN_DIST`, `UMAP_OTHER_SAMPLE`) are in `level2_classifier_common.py`. `Run_08.sh`: 8 CPUs, 64G.
+
 ### The model code
 
 - `multinomial_group_enet_torch.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`). It takes optional per-cell weights (`sample_weight`). The weighted version was checked two ways: against scikit-learn's weighted ridge fit (probabilities within 1e-7), and against an unweighted fit on duplicated cells (within 1e-9).
@@ -185,6 +198,6 @@ PYTHONNOUSERSITE=1 python -m pip install torch skglm
 - `config.R`: settings for this folder (`figure_outdir`, point sizes, `rng.seed`). It sources the shared `RNAseq_SingleCell/config.R`.
 - `Run_02.sh`: SLURM script for `02_Marker_Gene_Matrices.R`, with the same resources as `Run_01.sh`.
 - `level2_classifier_common.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance) and shared helpers.
-- `Run_03.sh` to `Run_07.sh`: SLURM scripts for the classifier steps (`torch` environment).
+- `Run_03.sh` to `Run_08.sh`: SLURM scripts for the classifier steps (`torch` environment, except `Run_08.sh`: base).
 - `Run_01.sh`: SLURM script for `01_Analysis.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment. 100G matches `Cell_Type_Assignment/Run_02.sh`, which also loads the atlas.
 - `output_files/`, `error_files/`: SLURM stdout and stderr.

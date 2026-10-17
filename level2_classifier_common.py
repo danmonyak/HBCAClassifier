@@ -72,6 +72,11 @@ KNN_GAMMAS = [0, 0.25, 0.5, 0.75, 1]   # 0 = plain vote, 1 = full inverse-freque
 KNN_BETAS = [0, 0.5, 1]                # gene scaling: divide by SD^beta
 KNN_QUERY_BATCH = 256                  # query cells per batch in the neighbour search (memory)
 
+# UMAP of the epithelial cells on the selected genes (08)
+UMAP_N_NEIGHBORS = 15
+UMAP_MIN_DIST = 0.3
+UMAP_OTHER_SAMPLE = 100000   # "Other" cells to include (a random sample); every epithelial cell is included
+
 
 # ---------------------- Helpers
 def get_args():
