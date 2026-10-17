@@ -7,23 +7,25 @@
 #
 # Each neighbour votes for its class with weight 1 / distance times (1 / frequency of its class
 # in the reference)^gamma. gamma = 0 is a plain distance-weighted vote; gamma = 1 fully corrects
-# for class imbalance. k and gamma are tuned together by validation balanced accuracy. Genes are
-# centred and scaled on the reference cells. Settings (KNN_K, KNN_GAMMAS) are in
+# for class imbalance. Each gene is centred and divided by SD^beta, using the reference cells:
+# beta = 1 is unit variance, 0.5 is Pareto scaling, 0 is no scaling (each gene keeps its own
+# spread, so high-variance genes count more in the distance). k, gamma and beta are tuned together
+# by validation balanced accuracy. Settings (KNN_K, KNN_GAMMAS, KNN_BETAS) are in
 # level2_classifier_common.py.
 #
-# The neighbours are found once per cell, at the largest k (brute force, in batches, with PyTorch
-# on all the job's CPUs), and every (k, gamma) is scored from the same neighbour lists.
+# For each beta, the neighbours are found once per cell, at the largest k (brute force, in batches,
+# with PyTorch on all the job's CPUs), and every (k, gamma) is scored from the same neighbour lists.
 #
 # Needs:    from 03 and 05 (run with the same arguments), in
 #           <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/: X.npz, prep.npz, model[_max<G>genes].npz
 #           Optional: nn_comparison[_max<G>genes].csv from 06, to compare with the network and baseline.
 # Produces: in that folder (all with the _max<G>genes suffix when max_genes is given):
-#           knn_tuning.csv       validation balanced accuracy and macro F1 for every (k, gamma)
+#           knn_tuning.csv       validation balanced accuracy and macro F1 for every (k, gamma, beta)
 #           knn_test_report.csv  per-class precision, recall and F1 on the test set
 #           knn_comparison.csv   test accuracy, balanced accuracy and macro F1 for KNN, plus the
 #                                network and baseline rows from 06 if they exist
 #           in figures/<run>/07/ (or .../07/cap<N>/): knn_tuning.png (validation balanced accuracy
-#           over k x gamma) and knn_test_confusion_matrix.png
+#           over k x gamma, one panel per beta) and knn_test_confusion_matrix.png
 #
 # Usage: python 07_Level2_KNN.py [cellranger_run_name] [max_cells_per_class] [max_genes]
 #        e.g. after `sbatch Run_05.sh 90 20000 40`: sbatch Run_07.sh 90 20000 40
@@ -40,11 +42,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_QUERY_BATCH,
+from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared, set_threads)
 
 t_start = time.time()
@@ -75,11 +76,18 @@ y = prep['y']
 idx_test = prep['idx_test']
 idx_ref, idx_val = train_test_split(prep['idx_train'], test_size=NN_VAL_SIZE,
                                     stratify=y[prep['idx_train']], random_state=RANDOM_STATE)
-scaler = StandardScaler().fit(X[idx_ref])
-to_tensor = lambda a: torch.as_tensor(a, dtype=torch.float32)
-X_ref, X_val, X_test = (to_tensor(scaler.transform(X[i])) for i in (idx_ref, idx_val, idx_test))
+X_ref_raw, X_val_raw, X_test_raw = X[idx_ref], X[idx_val], X[idx_test]
 y_ref, y_val, y_test = y[idx_ref], y[idx_val], y[idx_test]
 del X
+gene_mean, gene_sd = X_ref_raw.mean(axis=0), X_ref_raw.std(axis=0)
+gene_sd[gene_sd == 0] = 1.0     # a gene with no spread in the reference: leave it unscaled
+
+
+def scale(X_raw, beta):
+    """Centre each gene and divide it by SD^beta (from the reference cells), as a float32 tensor."""
+    return torch.as_tensor((X_raw - gene_mean) / gene_sd ** beta, dtype=torch.float32)
+
+
 log(f"reference: {len(idx_ref):,} cells, validation: {len(idx_val):,}, test: {len(idx_test):,}")
 
 k_max = max(KNN_K)
@@ -88,12 +96,12 @@ if k_max > len(idx_ref):
 
 ref_class = torch.as_tensor(pd.Index(CLASSES).get_indexer(y_ref), dtype=torch.long)
 ref_freq = np.bincount(ref_class.numpy(), minlength=len(CLASSES)) / len(y_ref)
-ref_sq = (X_ref ** 2).sum(dim=1)
 
 
-def class_vote_sums(Xq):
+def class_vote_sums(Xq, X_ref):
     """For every k in KNN_K: an (n_query x n_classes) array of each class's distance-weighted votes
     among the k nearest reference cells (class weights are applied later, per gamma)."""
+    ref_sq = (X_ref ** 2).sum(dim=1)
     sums = {k: np.empty((len(Xq), len(CLASSES)), dtype=np.float64) for k in KNN_K}
     for start in range(0, len(Xq), KNN_QUERY_BATCH):
         q = Xq[start:start + KNN_QUERY_BATCH]
@@ -118,35 +126,41 @@ def predict(sums_k, gamma):
     return scores, CLASSES[scores.argmax(axis=1)]
 
 
-# ---------------------- Tune k and gamma on the validation set
-val_sums = class_vote_sums(X_val)
-log("validation neighbours found")
+# ---------------------- Tune k, gamma and beta on the validation set
 rows = []
-for k in KNN_K:
-    for gamma in KNN_GAMMAS:
-        _, pred = predict(val_sums[k], gamma)
-        rows.append(dict(k=k, gamma=gamma, balanced_accuracy=balanced_accuracy_score(y_val, pred),
-                         f1_macro=f1_score(y_val, pred, labels=CLASSES, average='macro', zero_division=0)))
+for beta in KNN_BETAS:
+    val_sums = class_vote_sums(scale(X_val_raw, beta), scale(X_ref_raw, beta))
+    log(f"beta {beta}: validation neighbours found")
+    for k in KNN_K:
+        for gamma in KNN_GAMMAS:
+            _, pred = predict(val_sums[k], gamma)
+            rows.append(dict(beta=beta, k=k, gamma=gamma, balanced_accuracy=balanced_accuracy_score(y_val, pred),
+                             f1_macro=f1_score(y_val, pred, labels=CLASSES, average='macro', zero_division=0)))
 tuning = pd.DataFrame(rows)
 tuning.to_csv(os.path.join(clf_dir, f'knn_tuning{suffix}.csv'), index=False)
 best = tuning.loc[tuning['balanced_accuracy'].idxmax()]
-best_k, best_gamma = int(best['k']), float(best['gamma'])
-print(f"\nBest on validation: k = {best_k}, gamma = {best_gamma} "
+best_k, best_gamma, best_beta = int(best['k']), float(best['gamma']), float(best['beta'])
+print(f"\nBest on validation: k = {best_k}, gamma = {best_gamma}, beta = {best_beta} "
       f"(balanced accuracy {best['balanced_accuracy']:.4f}, macro F1 {best['f1_macro']:.4f})")
+print("Best validation balanced accuracy for each beta:")
+print(tuning.groupby('beta')['balanced_accuracy'].max().round(4).to_string())
 if best_k in (min(KNN_K), max(KNN_K)):
     print(f"**Note:** the best k is at the edge of KNN_K ({best_k}); a wider grid may do better.")
 
-# Heatmap of validation balanced accuracy over k x gamma
-fig, ax = plt.subplots(figsize=(8, 4))
-sns.heatmap(tuning.pivot(index='gamma', columns='k', values='balanced_accuracy'), annot=True, fmt='.3f',
-            cmap='viridis', cbar_kws={'label': 'Validation balanced accuracy'}, ax=ax)
-ax.set(title=f'Weighted KNN tuning, {len(genes)} genes (best: k = {best_k}, gamma = {best_gamma})')
+# Heatmaps of validation balanced accuracy over k x gamma, one panel per beta, on a shared colour scale
+fig, axes = plt.subplots(1, len(KNN_BETAS), figsize=(7 * len(KNN_BETAS), 4), squeeze=False)
+vmin, vmax = tuning['balanced_accuracy'].min(), tuning['balanced_accuracy'].max()
+for ax, (beta, d) in zip(axes[0], tuning.groupby('beta')):
+    sns.heatmap(d.pivot(index='gamma', columns='k', values='balanced_accuracy'), annot=True, fmt='.3f',
+                cmap='viridis', vmin=vmin, vmax=vmax, cbar_kws={'label': 'Validation balanced accuracy'}, ax=ax)
+    ax.set(title=f'beta = {beta}' + {0: ' (no scaling)', 0.5: ' (Pareto)', 1: ' (unit variance)'}.get(beta, ''))
+fig.suptitle(f'Weighted KNN tuning, {len(genes)} genes (best: k = {best_k}, gamma = {best_gamma}, beta = {best_beta})')
 fig.tight_layout()
 fig.savefig(os.path.join(figure_outdir_cur, f'knn_tuning{suffix}.png'), dpi=200)
 plt.close(fig)
 
 # ---------------------- Evaluate the chosen k and gamma on the test set
-test_sums = class_vote_sums(X_test)
+test_sums = class_vote_sums(scale(X_test_raw, best_beta), scale(X_ref_raw, best_beta))
 log("test neighbours found")
 _, pred_test = predict(test_sums[best_k], best_gamma)
 print("\nWeighted KNN on the test set:")
@@ -159,14 +173,14 @@ fig, ax = plt.subplots(figsize=(9, 7.5))
 sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
             vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
 ax.set(xlabel='Predicted', ylabel='True',
-       title=f'Weighted KNN, {len(genes)} genes (k = {best_k}, gamma = {best_gamma}): test set')
+       title=f'Weighted KNN, {len(genes)} genes (k = {best_k}, gamma = {best_gamma}, beta = {best_beta}): test set')
 fig.tight_layout()
 fig.savefig(os.path.join(figure_outdir_cur, f'knn_test_confusion_matrix{suffix}.png'), dpi=200)
 plt.close(fig)
 
 # ---------------------- Compare with 06 (network and baseline), if it has run
 # KNN has no log-loss: its probabilities are vote shares, which move in steps of about 1/k.
-knn_row = dict(model=f'Weighted KNN (k = {best_k}, gamma = {best_gamma})', log_loss=np.nan,
+knn_row = dict(model=f'Weighted KNN (k = {best_k}, gamma = {best_gamma}, beta = {best_beta})', log_loss=np.nan,
                accuracy=accuracy_score(y_test, pred_test),
                balanced_accuracy=balanced_accuracy_score(y_test, pred_test),
                f1_macro=f1_score(y_test, pred_test, labels=CLASSES, average='macro', zero_division=0))

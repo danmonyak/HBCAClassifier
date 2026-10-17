@@ -140,20 +140,20 @@ sbatch Run_07.sh 90 20000 40
 
 - **Needs:** `X.npz` and `prep.npz` from `03`, and `model[_max<G>genes].npz` from `05`. Optionally `nn_comparison[_max<G>genes].csv` from `06`.
 - **Produces:** in the classifier folder, all with the `_max<G>genes` suffix when a gene limit is given:
-  - `knn_tuning.csv`: validation balanced accuracy and macro F1 for every k and gamma.
+  - `knn_tuning.csv`: validation balanced accuracy and macro F1 for every k, gamma and beta.
   - `knn_test_report.csv`: per-class precision, recall and F1 on the test set.
   - `knn_comparison.csv`: test accuracy, balanced accuracy and macro F1 for KNN, plus the network and baseline rows from `06`.
-  - In `figures/<run>/07/` (or `.../07/cap<N>/`): `knn_tuning.png` (validation balanced accuracy over k x gamma) and `knn_test_confusion_matrix.png`.
+  - In `figures/<run>/07/` (or `.../07/cap<N>/`): `knn_tuning.png` (validation balanced accuracy over k x gamma, one panel per beta) and `knn_test_confusion_matrix.png`.
 
 What it does:
 
 - **Cells:** the same as `06`. The training set minus the same 10% validation part is the reference. The validation part is used for tuning. The test set is used once.
-- **Genes:** centred and scaled on the reference cells.
+- **Gene scaling:** each gene is centred and divided by SD^beta, using the reference cells. Beta = 1 is unit variance, 0.5 is Pareto scaling, and 0 is no scaling (each gene keeps its own spread, so high-variance genes count more in the distance).
 - **Votes:** each of the k nearest reference cells (Euclidean distance) votes for its class with weight 1 / distance times (1 / its class's frequency in the reference)^gamma. Gamma = 0 is a plain distance-weighted vote; gamma = 1 fully corrects for class imbalance. Exact matches (distance 0) dominate the vote, as in scikit-learn.
-- **Tuning:** k (5, 10, 25, 50, 100, 200, 400) and gamma (0, 0.25, 0.5, 0.75, 1) are chosen together by **validation balanced accuracy**. The neighbours are found once, at the largest k, so the whole grid costs about the same as one k. The log notes if the best k is at the edge of the grid.
+- **Tuning:** k (5, 10, 25, 50, 100, 200, 400), gamma (0, 0.25, 0.5, 0.75, 1) and beta (0, 0.5, 1) are chosen together by **validation balanced accuracy**. For each beta, the neighbours are found once, at the largest k, so the whole k x gamma grid costs about the same as one k. The log notes if the best k is at the edge of the grid.
 - **No log-loss for KNN:** its class scores are vote shares, which move in steps of about 1/k, so log-loss isn't a fair score.
 
-The settings (`KNN_K`, `KNN_GAMMAS`, `KNN_QUERY_BATCH`) are in `level2_classifier_common.py`. The neighbour search is brute force, in batches, with PyTorch on all the job's CPUs. `Run_07.sh`: 16 CPUs, 32G.
+The settings (`KNN_K`, `KNN_GAMMAS`, `KNN_BETAS`, `KNN_QUERY_BATCH`) are in `level2_classifier_common.py`. The neighbour search is brute force, in batches, with PyTorch on all the job's CPUs. `Run_07.sh`: 16 CPUs, 32G.
 
 ### The model code
 
