@@ -5,11 +5,11 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=100G
 #SBATCH --partition=htc
-#SBATCH --output=output_files/Run_02-%j.out
-#SBATCH --error=error_files/Run_02-%j.err
+#SBATCH --output=logs/Run_02-%j.out
+#SBATCH --error=logs/Run_02-%j.err
 #SBATCH --time=1-00:00:00
 
 source $HOME/.bashrc
 conda activate renv
 
-Rscript 02_Marker_Gene_Matrices.R
+Rscript scripts/02_marker_matrices.R

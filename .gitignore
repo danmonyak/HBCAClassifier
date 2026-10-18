@@ -3,10 +3,8 @@ local_paths.env
 
 # Outputs and logs (data objects live in STORAGE_DIR, not here)
 figures
-output_files/*
-error_files/*
-!output_files/.gitkeep
-!error_files/.gitkeep
+logs/*
+!logs/.gitkeep
 *.out
 *.err
 *.rds

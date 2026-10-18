@@ -1,18 +1,18 @@
-# 03_Level2_Classifier_Prep.py
+# 03_prep.py
 #
 # Step 1 of 3 of the level2 classifier: prepares the data for cross-validation (04) and the
 # final fit (05). Reads the cell state marker matrix and the labels from 02, relabels every
 # non-epithelial state as "Other", makes the 70/30 train/test split and the 5 CV folds, and
-# sets the alpha grid for each l1_ratio. Settings are in level2_classifier_common.py.
+# sets the alpha grid for each l1_ratio. Settings are in hbca_classifier/settings.py.
 #
-# Needs:    from 02_Marker_Gene_Matrices.R, in <STORAGE_DIR>/:
+# Needs:    from 02_marker_matrices.R, in <STORAGE_DIR>/:
 #           reed_state_marker_expr.mtx.gz, .genes.txt.gz, .cells.txt.gz, reed_cell_labels.csv.gz
 # Produces: in <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/:
 #           X.npz     cells x genes log-normalized expression (unscaled, sparse), after any cap
 #           prep.npz  cells, genes, labels (y), train/test indices, CV fold of each training
 #                     cell, and the alpha grid for each l1_ratio
 #
-# Usage: python 03_Level2_Classifier_Prep.py [max_cells_per_class]
+# Usage: python scripts/03_prep.py [max_cells_per_class]
 
 import os
 import time
@@ -24,7 +24,7 @@ from scipy.io import mmread
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
-from level2_classifier_common import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZE, N_FOLDS, RANDOM_STATE,
+from hbca_classifier.settings import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZE, N_FOLDS, RANDOM_STATE,
                                       L1_RATIOS, N_ALPHAS, ALPHA_MIN,
                                       get_args, get_classifier_dir, get_figure_dir, one_hot,
                                       get_class_weights, get_sample_weights)

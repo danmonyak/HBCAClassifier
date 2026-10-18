@@ -6,6 +6,20 @@ This started as the `RNAseq_SingleCell/Reed_Explore` folder of `tamoxifen-scRNA-
 
 Run everything from the repo root, because figures, logs and `data/` are relative paths.
 
+## Layout
+
+| Folder | What |
+| --- | --- |
+| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `10_transplant_summary.py`. |
+| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_10.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
+| `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py` and `tier2_models.py` (see "Other files"). |
+| `dev/` | Code the steps don't use: `multinomial_group_lasso.py`, the skglm version of the model, kept to cross-check the PyTorch solver. |
+| `logs/` | SLURM stdout and stderr. |
+| `data/` | The marker gene workbook (not in git). |
+| `figures/` | Figures, in `figures/<step>[/cap<N>]/` (not in git). |
+
+The Python steps import `hbca_classifier`, so the repo root must be on `PYTHONPATH`. The `slurm/` scripts set it. **To run a step outside SLURM, set it yourself,** e.g. `PYTHONPATH=$PWD python scripts/03_prep.py 300` from the repo root.
+
 ## Setup
 
 1. **Paths:** copy `local_paths.env.example` to `local_paths.env` and fill in `STORAGE_DIR` (where every data object is saved and loaded) and `HBCA_DIR` (the folder with `hbca-global.h5ad`). `local_paths.env` is gitignored.
@@ -20,13 +34,13 @@ Every script reads and writes its data objects directly in `STORAGE_DIR`. There'
 ## Running
 
 ```
-sbatch Run_01.sh   # 01_Analysis.R
-sbatch Run_02.sh   # 02_Marker_Gene_Matrices.R
+sbatch slurm/Run_01.sh   # 01_atlas_exploration.R
+sbatch slurm/Run_02.sh   # 02_marker_matrices.R
 ```
 
 The two scripts don't depend on each other. The level2 classifier (`03`, `04`, `05`) needs `02`'s output (see below for how to run it).
 
-## 01_Analysis.R
+## 01_atlas_exploration.R
 
 - **Needs:** `hbca-global.h5ad`, in the folder set as `HBCA_DIR` in `local_paths.env`.
 - **Produces:** three stacked bar plots in `figures/01/`, each with one bar per donor (55 donors) and that cell type's subtypes stacked: `LASP_subtypes_per_donor.png` (`LASP1`–`LASP5`), `LHS_subtypes_per_donor.png` (`LHS1`–`LHS3`) and `BMYO_subtypes_per_donor.png` (`BMYO1`–`BMYO2`).
@@ -47,7 +61,7 @@ What it sets up:
 
 **The atlas is large**: 803,283 cells x 33,604 genes, 8.3 GB on disk.
 
-## 02_Marker_Gene_Matrices.R
+## 02_marker_matrices.R
 
 - **Needs:** `hbca-global.h5ad` (as above) and `data/HBCA_Reed_Top_Marker_Genes.xlsx`.
 - **Produces**, all in `<STORAGE_DIR>/`:
@@ -57,18 +71,18 @@ What it sets up:
 
 What it does:
 
-- Loads the atlas as `reed`, the same way as `01_Analysis.R`. **The values are log-normalized expression**: the atlas's `X`, the only matrix `read_h5ad` loads. The file also has raw counts in a separate `raw` slot, which isn't loaded.
+- Loads the atlas as `reed`, the same way as `01_atlas_exploration.R`. **The values are log-normalized expression**: the atlas's `X`, the only matrix `read_h5ad` loads. The file also has raw counts in a separate `raw` slot, which isn't loaded.
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
 ## The level2 classifier: 03 to 10
 
-Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `level2_classifier_common.py`. Run `03`–`05` in order, from the repo root:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Run `03`–`05` in order, from the repo root:
 
 ```
-a=$(sbatch --parsable Run_03.sh [cap])
-b=$(sbatch --parsable --dependency=afterok:$a --kill-on-invalid-dep=yes Run_04.sh [cap])
-sbatch --dependency=afterok:$b --kill-on-invalid-dep=yes Run_05.sh [cap]
+a=$(sbatch --parsable slurm/Run_03.sh [cap])
+b=$(sbatch --parsable --dependency=afterok:$a --kill-on-invalid-dep=yes slurm/Run_04.sh [cap])
+sbatch --dependency=afterok:$b --kill-on-invalid-dep=yes slurm/Run_05.sh [cap]
 ```
 
 `--dependency=afterok` starts each step only if the previous one succeeded. **Without `--kill-on-invalid-dep=yes`, a step whose predecessor failed stays in the queue forever as `DependencyNeverSatisfied`**, and you have to `scancel` it yourself.
@@ -83,21 +97,21 @@ The model:
 - **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data only (not centred, which keeps the matrix sparse).
 - **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` and `l1_ratio` (0.25, 0.5, 0.75, 1). For each `l1_ratio`, there are 20 alphas, evenly spaced on a linear scale from just below alpha_max (the smallest alpha that drops every gene) down to 0.01. So most of them are near the top, where models keep few genes. The aim is a model with few genes. Models are scored by held-out log-loss (class-weighted). The best pair is refitted on the whole training set and evaluated on the test set.
 
-### 03_Level2_Classifier_Prep.py
+### 03_prep.py
 
 - **Needs:** from `02`, in `<STORAGE_DIR>/`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`.
 - **Produces:** in `<STORAGE_DIR>/reed_level2_classifier/`: `X.npz` (cells x genes expression, unscaled) and `prep.npz` (the labels, the train/test split, each training cell's CV fold, and the alpha grid for each `l1_ratio`).
 
-The alpha grids are set once from the whole training set, so every fold uses the same values and their results can be averaged. alpha_max depends on the data and the `l1_ratio` (about 0.25 / `l1_ratio` on the 300-per-class test), so each `l1_ratio` has its own grid. The 0.01 floor (`ALPHA_MIN`) is shared. The log lists every value. `Run_03.sh`: 4 CPUs, 64G.
+The alpha grids are set once from the whole training set, so every fold uses the same values and their results can be averaged. alpha_max depends on the data and the `l1_ratio` (about 0.25 / `l1_ratio` on the 300-per-class test), so each `l1_ratio` has its own grid. The 0.01 floor (`ALPHA_MIN`) is shared. The log lists every value. `slurm/Run_03.sh`: 4 CPUs, 64G.
 
-### 04_Level2_Classifier_CV.py
+### 04_cv.py
 
 - **Needs:** `X.npz` and `prep.npz` from `03`.
 - **Produces:** `cv/fold<k>_l1ratio<r>.csv` in the same folder: one row per alpha, with the held-out log-loss (class-weighted), accuracy, balanced accuracy, macro F1 (the mean of the per-class F1 scores, so every class counts equally), genes kept and whether the solver converged.
 
-`Run_04.sh` is a SLURM array of 20 tasks, one per fold and `l1_ratio`. Each fits the whole alpha path on 16 CPUs (48G). **If you change `N_FOLDS` or `L1_RATIOS`, change the `--array` line to match.**
+`slurm/Run_04.sh` is a SLURM array of 20 tasks, one per fold and `l1_ratio`. Each fits the whole alpha path on 16 CPUs (48G). **If you change `N_FOLDS` or `L1_RATIOS`, change the `--array` line to match.**
 
-### 05_Level2_Classifier_Fit.py
+### 05_fit.py
 
 - **Needs:** `X.npz`, `prep.npz` and all 20 `cv/` files. It stops and lists them if any are missing.
 - **Produces:** in the same folder:
@@ -107,23 +121,23 @@ The alpha grids are set once from the whole training set, so every fold uses the
   - `model.npz`: `W`, `b`, the genes, classes and per-gene `scale`, to apply the model to other cells: probabilities = softmax((x / scale) @ W + b), with x the log-normalized expression of the same genes.
   - In `figures/05/`: `cv_curves.png` (mean CV log-loss, macro F1 and genes kept against alpha, one line per `l1_ratio`; a black star marks the chosen model) and `test_confusion_matrix.png`.
 
-The log has the test accuracy, balanced accuracy, macro F1 and log-loss, and the top genes. `Run_05.sh`: 16 CPUs, 48G.
+The log has the test accuracy, balanced accuracy, macro F1 and log-loss, and the top genes. `slurm/Run_05.sh`: 16 CPUs, 48G.
 
 **A smaller model:** `05` takes an optional second argument, `max_genes`. It then picks the best model (lowest CV log-loss) among those that keep at most that many genes, refits it and evaluates it. For example, on the full data with at most 200 genes:
 
 ```
-sbatch Run_05.sh none 200
+sbatch slurm/Run_05.sh none 200
 ```
 
-(`none` means no cell cap.) **The cap must match a run whose `03` and `04` have finished:** `none` needs the full-data CV, and a capped run needs the same cap (e.g. `sbatch Run_05.sh 300 50`). If the CV results are missing, `05` stops and lists them. If no model is small enough, `05` stops and says how many genes the smallest one keeps. This reuses the results of `03` and `04` (no need to rerun them), but it does refit the model. Every output except `cv_summary.csv` gets a `_max<N>genes` suffix, e.g. `test_confusion_matrix_max200genes.png`, so it doesn't overwrite the unconstrained model. The cap applies to the genes kept averaged over the CV folds, so the refitted model can keep a few more or fewer genes. Its count is in the confusion matrix's title.
+(`none` means no cell cap.) **The cap must match a run whose `03` and `04` have finished:** `none` needs the full-data CV, and a capped run needs the same cap (e.g. `sbatch slurm/Run_05.sh 300 50`). If the CV results are missing, `05` stops and lists them. If no model is small enough, `05` stops and says how many genes the smallest one keeps. This reuses the results of `03` and `04` (no need to rerun them), but it does refit the model. Every output except `cv_summary.csv` gets a `_max<N>genes` suffix, e.g. `test_confusion_matrix_max200genes.png`, so it doesn't overwrite the unconstrained model. The cap applies to the genes kept averaged over the CV folds, so the refitted model can keep a few more or fewer genes. Its count is in the confusion matrix's title.
 
-### 06_Level2_NN.py
+### 06_network.py
 
 A dense neural network that predicts the class from only the genes `05` selected. Run it after `05`, with the same arguments, usually with a gene limit:
 
 ```
-sbatch Run_05.sh 300 40
-sbatch Run_06.sh 300 40
+sbatch slurm/Run_05.sh 300 40
+sbatch slurm/Run_06.sh 300 40
 ```
 
 - **Needs:** `X.npz` and `prep.npz` from `03`, and `model[_max<G>genes].npz` from `05`.
@@ -141,22 +155,22 @@ What it does:
 - **Baseline:** an unpenalized multinomial logistic regression on the same genes and cells. **If the network doesn't beat it, the nonlinearity isn't adding anything.**
 - **Class weights:** both models weight each class by its inverse frequency in the training data, so every class counts equally, as in balanced accuracy and macro F1. The selection model in `04`/`05` uses the same weights. Without weights, `"Other"` (57% of the full atlas) would dominate.
 
-The network settings (`NN_HIDDEN`, `NN_DROPOUT`, `NN_LEARNING_RATE`, `NN_BATCH_SIZE`, `NN_MAX_EPOCHS`, `NN_PATIENCE`, `NN_VAL_SIZE`) are in `level2_classifier_common.py`.
+The network settings (`NN_HIDDEN`, `NN_DROPOUT`, `NN_LEARNING_RATE`, `NN_BATCH_SIZE`, `NN_MAX_EPOCHS`, `NN_PATIENCE`, `NN_VAL_SIZE`) are in `hbca_classifier/settings.py`.
 
-**Other network shapes:** an optional third argument names another hidden-layer layout from `NN_ARCHITECTURES` in `level2_classifier_common.py`. Every output, the baseline's included, then gets an extra `_<name>` suffix, so the default network's results are kept. For example, `deep` has five hidden layers (64, 64, 32, 32, 16):
+**Other network shapes:** an optional third argument names another hidden-layer layout from `NN_ARCHITECTURES` in `hbca_classifier/settings.py`. Every output, the baseline's included, then gets an extra `_<name>` suffix, so the default network's results are kept. For example, `deep` has five hidden layers (64, 64, 32, 32, 16):
 
 ```
-sbatch Run_06.sh 20000 40 deep
+sbatch slurm/Run_06.sh 20000 40 deep
 ```
 
-Tested with 40 genes, it was no better than the default 64 → 32 network: test balanced accuracy 0.835 vs 0.848 at 2,000 cells per class, and 0.843 vs 0.842 at 20,000. `Run_06.sh`: 8 CPUs, 32G.
+Tested with 40 genes, it was no better than the default 64 → 32 network: test balanced accuracy 0.835 vs 0.848 at 2,000 cells per class, and 0.843 vs 0.842 at 20,000. `slurm/Run_06.sh`: 8 CPUs, 32G.
 
-### 07_Level2_KNN.py
+### 07_knn.py
 
 A second tier-2 model: weighted k-nearest neighbours on the genes `05` selected. Run it after `05`, with the same arguments. It doesn't need `06`, but if `06` has run, the comparison table includes the network and baseline:
 
 ```
-sbatch Run_07.sh 20000 40
+sbatch slurm/Run_07.sh 20000 40
 ```
 
 - **Needs:** `X.npz` and `prep.npz` from `03`, and `model[_max<G>genes].npz` from `05`. Optionally `nn_comparison[_max<G>genes].csv` from `06`.
@@ -174,28 +188,28 @@ What it does:
 - **Tuning:** k (5, 10, 25, 50, 100, 200, 400), gamma (0, 0.25, 0.5, 0.75, 1) and beta (0, 0.5, 1) are chosen together by **validation balanced accuracy**. For each beta, the neighbours are found once, at the largest k, so the whole k x gamma grid costs about the same as one k. The log notes if the best k is at the edge of the grid.
 - **No log-loss for KNN:** its class scores are vote shares, which move in steps of about 1/k, so log-loss isn't a fair score.
 
-The settings (`KNN_K`, `KNN_GAMMAS`, `KNN_BETAS`, `KNN_QUERY_BATCH`) are in `level2_classifier_common.py`. The neighbour search is brute force, in batches, with PyTorch on all the job's CPUs. `Run_07.sh`: 16 CPUs, 32G.
+The settings (`KNN_K`, `KNN_GAMMAS`, `KNN_BETAS`, `KNN_QUERY_BATCH`) are in `hbca_classifier/settings.py`. The neighbour search is brute force, in batches, with PyTorch on all the job's CPUs. `slurm/Run_07.sh`: 16 CPUs, 32G.
 
-### 08_Level2_UMAP.py
+### 08_umap.py
 
 One UMAP per tier-1 run, on only the genes that run's tier-1 model selected, coloured by cell state. It includes every cell in the 10 epithelial states (LASP1–5, LHS1–3, BMYO1–2), each state in its own colour, plus a random sample of 100,000 other cells (`UMAP_OTHER_SAMPLE`) in light grey, as `"Other"`, drawn underneath. It shows how well those genes alone separate the states. Run it after `05`, with the same arguments:
 
 ```
-sbatch Run_08.sh 20000 40
+sbatch slurm/Run_08.sh 20000 40
 ```
 
 - **Needs:** `model[_max<G>genes].npz` from that run's `05`, and `X.npz` and `prep.npz` from `03` run on the full data (no cap), which hold every cell.
 - **Produces:** `umap[_max<G>genes].csv.gz` in that run's classifier folder (cell, state, UMAP1, UMAP2), and `figures/08/` (or `.../08/cap<N>/`): `umap[_max<G>genes].png`.
 
-Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they differ only in their genes. Genes are centred and scaled to unit variance over the plotted cells. **UMAP itself isn't seeded,** so it runs on all the job's cores, and its layout differs slightly each time it's run. **It runs in the base conda environment**, because the `torch` environment doesn't have umap-learn. The UMAP settings (`UMAP_N_NEIGHBORS`, `UMAP_MIN_DIST`, `UMAP_OTHER_SAMPLE`) are in `level2_classifier_common.py`. `Run_08.sh`: 8 CPUs, 64G.
+Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they differ only in their genes. Genes are centred and scaled to unit variance over the plotted cells. **UMAP itself isn't seeded,** so it runs on all the job's cores, and its layout differs slightly each time it's run. **It runs in the base conda environment**, because the `torch` environment doesn't have umap-learn. The UMAP settings (`UMAP_N_NEIGHBORS`, `UMAP_MIN_DIST`, `UMAP_OTHER_SAMPLE`) are in `hbca_classifier/settings.py`. `slurm/Run_08.sh`: 8 CPUs, 64G.
 
-### TRANSPLANT: 09_Transplant_Tier2.py and 10_Transplant_Summary.py
+### TRANSPLANT: 09_transplant.py and 10_transplant_summary.py
 
 Retrains the tier-2 models on the full data, on the genes that a capped run's tier-1 model chose. By default these are the 25 genes from the 20,000-per-class run with a 40-gene limit (`TRANSPLANT_SOURCE_CAP`, `TRANSPLANT_SOURCE_MAX_GENES`). The reason: on the full data, tier 1 chose a worse gene set (test balanced accuracy about 0.75 against 0.84). A likely cause is that inverse-frequency class weights become extreme there, about 2,200:1. The UMAPs (`08`) show the same thing.
 
 ```
-a=$(sbatch --parsable Run_09.sh)
-sbatch --dependency=afterok:$a --kill-on-invalid-dep=yes Run_10.sh
+a=$(sbatch --parsable slurm/Run_09.sh)
+sbatch --dependency=afterok:$a --kill-on-invalid-dep=yes slurm/Run_10.sh
 ```
 
 - **Needs:** `X.npz` and `prep.npz` from `03` on the full data, and `prep.npz` and `model_max<G>genes.npz` from the source run.
@@ -206,15 +220,15 @@ sbatch --dependency=afterok:$a --kill-on-invalid-dep=yes Run_10.sh
 What it does:
 
 - **Cells:** the full run's training set minus a stratified 10% validation part (as in `06`), for training and tuning. **The test set is the full run's test set minus every cell in the source run's training set,** because the source run's tier-1 model chose the genes using those cells.
-- **Tempered class weights:** each class is weighted by (1 / its frequency)^gamma, with gamma in `TRANSPLANT_GAMMAS` (0, 0.25, 0.5, 0.75, 1). `Run_09.sh` is an array with one task per gamma, each training the network and the unpenalized logistic regression, plus one task for KNN, which tunes its own k, gamma and beta as in `07`. **If you change `TRANSPLANT_GAMMAS`, change the `--array` line to match.**
+- **Tempered class weights:** each class is weighted by (1 / its frequency)^gamma, with gamma in `TRANSPLANT_GAMMAS` (0, 0.25, 0.5, 0.75, 1). `slurm/Run_09.sh` is an array with one task per gamma, each training the network and the unpenalized logistic regression, plus one task for KNN, which tunes its own k, gamma and beta as in `07`. **If you change `TRANSPLANT_GAMMAS`, change the `--array` line to match.**
 - **Choosing:** `10` picks each model's gamma by validation balanced accuracy, then scores the test set once.
 
-The network training and KNN votes come from `level2_tier2_models.py`, which copies the code of `06` and `07` as functions (`06` and `07` keep their own copies). `Run_09.sh`: 16 CPUs, 32G per task. `Run_10.sh`: 4 CPUs, 16G.
+The network training and KNN votes come from `hbca_classifier/tier2_models.py`, which copies the code of `06` and `07` as functions (`06` and `07` keep their own copies). `slurm/Run_09.sh`: 16 CPUs, 32G per task. `slurm/Run_10.sh`: 4 CPUs, 16G.
 
 ### The model code
 
-- `multinomial_group_enet_torch.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`). It takes optional per-cell weights (`sample_weight`). The weighted version was checked two ways: against scikit-learn's weighted ridge fit (probabilities within 1e-7), and against an unweighted fit on duplicated cells (within 1e-9).
-- `multinomial_group_lasso.py` is the same model for skglm. The scripts don't use it. It's kept to check the PyTorch solver. The two agreed on simulated data and on 300 real cells (probabilities within about 1e-7). **skglm is far slower:** on 20,000 cells, one alpha took up to 47 minutes with skglm, against 11 seconds with PyTorch on 16 CPUs. The model was also checked against scikit-learn: unpenalized and pure-ridge fits give the same probabilities to within 1e-7.
+- `hbca_classifier/group_enet.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`). It takes optional per-cell weights (`sample_weight`). The weighted version was checked two ways: against scikit-learn's weighted ridge fit (probabilities within 1e-7), and against an unweighted fit on duplicated cells (within 1e-9).
+- `dev/multinomial_group_lasso.py` is the same model for skglm. The scripts don't use it. It's kept to check the PyTorch solver. The two agreed on simulated data and on 300 real cells (probabilities within about 1e-7). **skglm is far slower:** on 20,000 cells, one alpha took up to 47 minutes with skglm, against 11 seconds with PyTorch on 16 CPUs. The model was also checked against scikit-learn: unpenalized and pure-ridge fits give the same probabilities to within 1e-7.
 
 ### The torch environment
 
@@ -230,12 +244,12 @@ PYTHONNOUSERSITE=1 python -m pip install torch skglm
 
 ## Other files
 
-- `config.R`: settings for the R scripts (`figure_outdir`, `data_dir`, `OUTPUT_DIR` and `get_local_path()` from `local_paths.env`, `catObj()`, point sizes, `rng.seed`).
-- `config.py`: the same paths for the Python scripts (`OUTPUT_DIR`, `get_local_path()`).
+- `config.R`: settings for the R scripts (`figure_outdir`, `data_dir`, `OUTPUT_DIR` and `get_local_path()` from `local_paths.env`, `catObj()`, point sizes, `rng.seed`). It stays in the repo root, because the R scripts source it from there.
+- `hbca_classifier/config.py`: the same paths for the Python scripts (`OUTPUT_DIR`, `get_local_path()`).
+- `hbca_classifier/settings.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance, network, KNN, UMAP and TRANSPLANT settings) and shared helpers.
+- `hbca_classifier/group_enet.py`: the tier-1 model's solver (see "The model code").
+- `hbca_classifier/tier2_models.py`: the tier-2 network training and KNN votes as functions, used by `09`.
 - `local_paths.env.example`: template for `local_paths.env`.
-- `Run_02.sh`: SLURM script for `02_Marker_Gene_Matrices.R`, with the same resources as `Run_01.sh`.
-- `level2_classifier_common.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance) and shared helpers.
-- `Run_03.sh` to `Run_10.sh`: SLURM scripts for the classifier steps (`torch` environment, except `Run_08.sh`: base).
-- `level2_tier2_models.py`: the tier-2 network training and KNN votes as functions, used by `09`.
-- `Run_01.sh`: SLURM script for `01_Analysis.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment, because loading the atlas takes a lot of memory.
-- `output_files/`, `error_files/`: SLURM stdout and stderr. They hold a `.gitkeep`, because SLURM fails a job whose log folder is missing.
+- `slurm/Run_01.sh`: SLURM script for `01_atlas_exploration.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment, because loading the atlas takes a lot of memory. `slurm/Run_02.sh` (for `02_marker_matrices.R`) has the same resources.
+- `slurm/Run_03.sh` to `slurm/Run_10.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
+- `logs/`: holds a `.gitkeep`, because SLURM fails a job whose log folder is missing.

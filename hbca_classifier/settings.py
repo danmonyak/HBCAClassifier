@@ -1,14 +1,14 @@
-# level2_classifier_common.py
+# hbca_classifier/settings.py
 #
 # Settings and helpers shared by the three level2 classifier steps:
-#   03_Level2_Classifier_Prep.py -> 04_Level2_Classifier_CV.py (SLURM array) -> 05_Level2_Classifier_Fit.py
+#   03_prep.py -> 04_cv.py (SLURM array) -> 05_fit.py
 # Change the settings here, not in the scripts, so all three steps agree.
 #
 # Every step takes the same optional first argument: [max_cells_per_class]
 #   max_cells_per_class:  default none (every cell). Caps the cells per class before the split, for a
 #                         quicker run. Each cap gets its own output folder, so capped runs never
 #                         overwrite the full one. Pass 'none' for no cap when a later argument follows.
-# 05 to 08 also take a second, max_genes (see 05_Level2_Classifier_Fit.py); 09 and 10 take none.
+# 05 to 08 also take a second, max_genes (see 05_fit.py); 09 and 10 take none.
 
 import os
 import sys
@@ -16,8 +16,8 @@ import sys
 import numpy as np
 import pandas as pd
 
-# Shared Python config (config.py): OUTPUT_DIR (the storage folder, from local_paths.env)
-from config import OUTPUT_DIR
+# Shared Python config (hbca_classifier/config.py): OUTPUT_DIR (the storage folder, from local_paths.env)
+from hbca_classifier.config import OUTPUT_DIR
 
 # ---------------------- Settings
 # The classes to predict. Every other level2 label becomes "Other".
@@ -36,12 +36,12 @@ RANDOM_STATE = 0
 # is empty). Linear spacing puts most values near the top, where models keep few genes, and fewer
 # toward ALPHA_MIN, where they keep many. alpha_max depends on l1_ratio and the data (set in 03).
 # 04 runs one SLURM array task per (fold, l1_ratio): N_FOLDS * len(L1_RATIOS) tasks.
-# **If you change N_FOLDS or L1_RATIOS, change the --array line in Run_04.sh to match.**
+# **If you change N_FOLDS or L1_RATIOS, change the --array line in slurm/Run_04.sh to match.**
 L1_RATIOS = [0.25, 0.5, 0.75, 1.0]
 N_ALPHAS = 20
 ALPHA_MIN = 0.01
 
-# Solver settings (FISTA in multinomial_group_enet_torch.py)
+# Solver settings (FISTA in hbca_classifier/group_enet.py)
 TOL = 1e-6               # stop when the largest optimality violation is below this
 MAX_ITER = 20000         # per alpha
 
@@ -78,7 +78,7 @@ UMAP_OTHER_SAMPLE = 100000   # "Other" cells to include (a random sample); every
 
 # TRANSPLANT (09, 10): take the genes from a capped run's tier-1 model and retrain the tier-2 models
 # on the full data, with tempered class weights (1/class frequency)^gamma, gamma tuned on validation.
-# **If you change TRANSPLANT_GAMMAS, change the --array line in Run_09.sh to match** (one task per gamma, plus KNN).
+# **If you change TRANSPLANT_GAMMAS, change the --array line in slurm/Run_09.sh to match** (one task per gamma, plus KNN).
 TRANSPLANT_SOURCE_CAP = 20000
 TRANSPLANT_SOURCE_MAX_GENES = 40
 TRANSPLANT_GAMMAS = [0, 0.25, 0.5, 0.75, 1]

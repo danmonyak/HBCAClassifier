@@ -1,4 +1,4 @@
-# 08_Level2_UMAP.py
+# 08_umap.py
 #
 # One UMAP of the atlas cells on only the genes that the tier-1 model (05) selected, coloured by cell
 # state: every cell in the 10 epithelial states (LASP1-5, LHS1-3, BMYO1-2) in its own colour, plus a
@@ -16,8 +16,8 @@
 #
 # Runs in the base conda environment (it has umap-learn; the torch environment doesn't).
 #
-# Usage: python 08_Level2_UMAP.py [max_cells_per_class] [max_genes]
-#        e.g. sbatch Run_08.sh 20000 40
+# Usage: python scripts/08_umap.py [max_cells_per_class] [max_genes]
+#        e.g. sbatch slurm/Run_08.sh 20000 40
 
 import os
 import sys
@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import umap
 
-from level2_classifier_common import (KEEP_STATES, CLASSES, RANDOM_STATE, UMAP_N_NEIGHBORS, UMAP_MIN_DIST, UMAP_OTHER_SAMPLE,
+from hbca_classifier.settings import (KEEP_STATES, CLASSES, RANDOM_STATE, UMAP_N_NEIGHBORS, UMAP_MIN_DIST, UMAP_OTHER_SAMPLE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared)
 
 t_start = time.time()

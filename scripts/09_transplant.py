@@ -1,12 +1,12 @@
-# 09_Transplant_Tier2.py
+# 09_transplant.py
 #
 # TRANSPLANT, step 1 of 2: retrain the tier-2 models on the full data, on the genes that a capped
 # run's tier-1 model selected (TRANSPLANT_SOURCE_CAP / TRANSPLANT_SOURCE_MAX_GENES; by default the
-# 25 genes from the 20,000-per-class run with a 40-gene limit). Run as a SLURM array (Run_09.sh):
+# 25 genes from the 20,000-per-class run with a 40-gene limit). Run as a SLURM array (slurm/Run_09.sh):
 #   tasks 0 to len(TRANSPLANT_GAMMAS) - 1: the network and the unpenalized logistic regression, with
 #       tempered class weights (1/class frequency)^gamma, one gamma per task
 #   last task: weighted KNN, which tunes its own k, gamma and beta as in 07
-# 10_Transplant_Summary.py then picks each model's gamma (or k, gamma, beta) by validation
+# 10_transplant_summary.py then picks each model's gamma (or k, gamma, beta) by validation
 # balanced accuracy and scores the test set.
 #
 # Cells, from the full-data prep (03 with no cap):
@@ -25,7 +25,7 @@
 #           knn.npz         the KNN tuning grid's validation scores, and the chosen setting's test scores
 #           test_cells.csv.gz  the test cells and their states (the same in every task)
 #
-# Usage: sbatch Run_09.sh
+# Usage: sbatch slurm/Run_09.sh
 
 import os
 import sys
@@ -38,11 +38,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, f1_score
 
-from level2_classifier_common import (OUTPUT_DIR, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, KNN_K, KNN_GAMMAS,
+from hbca_classifier.settings import (OUTPUT_DIR, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, KNN_K, KNN_GAMMAS,
                                       KNN_BETAS, TRANSPLANT_SOURCE_CAP, TRANSPLANT_SOURCE_MAX_GENES,
                                       TRANSPLANT_GAMMAS, get_classifier_dir, get_figure_dir, load_prepared,
                                       get_class_weights, set_threads)
-from level2_tier2_models import train_network, network_proba, knn_class_vote_sums, knn_predict
+from hbca_classifier.tier2_models import train_network, network_proba, knn_class_vote_sums, knn_predict
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -54,7 +54,7 @@ task = int(os.environ['SLURM_ARRAY_TASK_ID'])
 n_tasks = len(TRANSPLANT_GAMMAS) + 1
 if not 0 <= task < n_tasks:
     raise ValueError(f"array task {task} is out of range: there are {n_tasks} tasks (0-{n_tasks - 1}). "
-                     "Check that the --array line in Run_09.sh matches TRANSPLANT_GAMMAS.")
+                     "Check that the --array line in slurm/Run_09.sh matches TRANSPLANT_GAMMAS.")
 threads = set_threads()
 print(f"Task {task}, {threads} threads")
 

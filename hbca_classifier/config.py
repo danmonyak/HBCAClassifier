@@ -1,9 +1,10 @@
-# config.py
+# hbca_classifier/config.py
 # Settings shared by the Python scripts: the paths in local_paths.env (in the repo root, gitignored).
 # Copy local_paths.env.example to local_paths.env and fill it in.
 import os
 
-repo_dir = os.path.dirname(os.path.abspath(__file__))
+# This file is in hbca_classifier/, one level below the repo root
+repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir = os.path.join(repo_dir, 'data')
 
 local_paths_file = os.path.join(repo_dir, 'local_paths.env')

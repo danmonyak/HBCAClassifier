@@ -2,7 +2,7 @@
 #
 # Multinomial (softmax) logistic regression with a shared group penalty, for skglm.
 # Not used by the classifier scripts, which use the faster PyTorch version
-# (multinomial_group_enet_torch.py). Kept to cross-check that solver.
+# (hbca_classifier/group_enet.py). Kept to cross-check that solver.
 #
 # skglm (0.5) has a multi-task solver (MultiTaskBCD) and a row-wise group penalty (L2_1),
 # but no multinomial loss. This module adds:

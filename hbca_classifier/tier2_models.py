@@ -1,6 +1,6 @@
-# level2_tier2_models.py
+# hbca_classifier/tier2_models.py
 #
-# The tier-2 models as functions, for 09_Transplant_Tier2.py: the dense network (as in 06) and
+# The tier-2 models as functions, for 09_transplant.py: the dense network (as in 06) and
 # the weighted KNN votes (as in 07). 06 and 07 keep their own copies of this code, unchanged.
 
 import copy
@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from torch import nn
 
-from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_DROPOUT, NN_LEARNING_RATE, NN_BATCH_SIZE,
+from hbca_classifier.settings import (CLASSES, RANDOM_STATE, NN_DROPOUT, NN_LEARNING_RATE, NN_BATCH_SIZE,
                                       NN_MAX_EPOCHS, NN_PATIENCE, KNN_K, KNN_QUERY_BATCH)
 
 to_tensor = lambda a: torch.as_tensor(a, dtype=torch.float32)

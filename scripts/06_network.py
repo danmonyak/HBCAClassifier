@@ -1,4 +1,4 @@
-# 06_Level2_NN.py
+# 06_network.py
 #
 # Predicts the level2 class (10 epithelial states + "Other") from the small gene set that the
 # group-lasso model in 05 selected, with a dense neural network. As a baseline, it also fits an
@@ -8,7 +8,7 @@
 # Both models use the same cells: the training set from 03, minus a stratified validation part
 # (NN_VAL_SIZE), which the network uses for early stopping. Both weight each class by its inverse
 # frequency, so every class counts equally (as in balanced accuracy and macro F1). The test set is
-# used once, at the end. Settings are in level2_classifier_common.py.
+# used once, at the end. Settings are in hbca_classifier/settings.py.
 #
 # Needs:    from 03 and 05 (run with the same arguments), in
 #           <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/: X.npz, prep.npz, model[_max<G>genes].npz
@@ -22,8 +22,8 @@
 # Optional 3rd argument: the name of another network shape in NN_ARCHITECTURES (e.g. deep). Every
 # output then gets an extra _<name> suffix, so the default network's results are kept.
 #
-# Usage: python 06_Level2_NN.py [max_cells_per_class] [max_genes] [architecture]
-#        e.g. after `sbatch Run_05.sh 300 40`: sbatch Run_06.sh 300 40
+# Usage: python scripts/06_network.py [max_cells_per_class] [max_genes] [architecture]
+#        e.g. after `sbatch slurm/Run_05.sh 300 40`: sbatch slurm/Run_06.sh 300 40
 
 import copy
 import os
@@ -44,7 +44,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
+from hbca_classifier.settings import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
                                       NN_LEARNING_RATE, NN_BATCH_SIZE, NN_MAX_EPOCHS, NN_PATIENCE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       mean_log_loss, set_threads, get_class_weights)

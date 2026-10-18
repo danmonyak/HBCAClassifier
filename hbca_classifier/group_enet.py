@@ -1,4 +1,4 @@
-# multinomial_group_enet_torch.py
+# hbca_classifier/group_enet.py
 #
 # Multinomial logistic regression with a group elastic net penalty, solved with PyTorch.
 # Same model as multinomial_group_lasso.py (the skglm version), but solved by accelerated

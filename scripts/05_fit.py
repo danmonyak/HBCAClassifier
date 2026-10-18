@@ -1,4 +1,4 @@
-# 05_Level2_Classifier_Fit.py
+# 05_fit.py
 #
 # Step 3 of 3 of the level2 classifier: collects the cross-validation results from 04, picks the
 # (l1_ratio, alpha) pair with the lowest mean held-out log-loss, refits it on the whole training
@@ -22,8 +22,8 @@
 #           kept against alpha) and test_confusion_matrix.png
 #           With max_genes, every file above except cv_summary.csv gets a _max<N>genes suffix.
 #
-# Usage: python 05_Level2_Classifier_Fit.py [max_cells_per_class] [max_genes]
-#        e.g. the full data, at most 200 genes: sbatch Run_05.sh none 200
+# Usage: python scripts/05_fit.py [max_cells_per_class] [max_genes]
+#        e.g. the full data, at most 200 genes: sbatch slurm/Run_05.sh none 200
 
 import os
 import sys
@@ -40,11 +40,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
                              classification_report, confusion_matrix, f1_score)
 
-from level2_classifier_common import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
+from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       one_hot, mean_log_loss, set_threads,
                                       get_class_weights, get_sample_weights)
-from multinomial_group_enet_torch import MultinomialGroupEnet, predict_proba
+from hbca_classifier.group_enet import MultinomialGroupEnet, predict_proba
 
 warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in beta.*')
 

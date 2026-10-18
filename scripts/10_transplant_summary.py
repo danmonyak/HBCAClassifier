@@ -1,4 +1,4 @@
-# 10_Transplant_Summary.py
+# 10_transplant_summary.py
 #
 # TRANSPLANT, step 2 of 2: collects 09's results, picks the class-weight exponent gamma for the
 # network and for the baseline by validation balanced accuracy (KNN chose its own k, gamma and beta
@@ -13,7 +13,7 @@
 #           <model>_test_report.csv   per-class precision, recall and F1 (model: nn, baseline, knn)
 #           in figures/10/: gamma_tuning.png and <model>_test_confusion_matrix.png
 #
-# Usage: sbatch Run_10.sh
+# Usage: sbatch slurm/Run_10.sh
 
 import os
 import sys
@@ -27,7 +27,7 @@ import seaborn as sns
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from level2_classifier_common import (OUTPUT_DIR, CLASSES, TRANSPLANT_GAMMAS, TRANSPLANT_SOURCE_CAP,
+from hbca_classifier.settings import (OUTPUT_DIR, CLASSES, TRANSPLANT_GAMMAS, TRANSPLANT_SOURCE_CAP,
                                       get_figure_dir, get_class_weights, mean_log_loss)
 
 out_dir = os.path.join(OUTPUT_DIR, 'reed_level2_transplant')

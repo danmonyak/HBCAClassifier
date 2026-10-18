@@ -1,13 +1,13 @@
-# 04_Level2_Classifier_CV.py
+# 04_cv.py
 #
 # Step 2 of 3 of the level2 classifier: one cross-validation fit, run as a SLURM array task
-# (Run_04.sh). Each task takes one (fold, l1_ratio) pair: it fits the model on the other folds
+# (slurm/Run_04.sh). Each task takes one (fold, l1_ratio) pair: it fits the model on the other folds
 # for every alpha in the grid (largest first, each fit warm-started from the previous one) and
 # scores the held-out fold. 5 folds x 4 l1_ratios = 20 tasks.
 #
 # The model is multinomial logistic regression with a group elastic net penalty (each gene's
 # coefficients across all classes form one group), fitted with PyTorch on all the job's CPU
-# cores (multinomial_group_enet_torch.py). Genes are scaled to unit variance on the fold's
+# cores (hbca_classifier/group_enet.py). Genes are scaled to unit variance on the fold's
 # training part only (not centred, which keeps the matrix sparse). The intercept isn't penalized.
 # Cells are weighted by inverse class frequency, so rare classes (e.g. LASP5) count as much as
 # common ones, in the fit and in the held-out log-loss.
@@ -17,8 +17,8 @@
 # Produces: cv/fold<k>_l1ratio<r>.csv in the same folder: one row per alpha, with the held-out
 #           log-loss, accuracy, balanced accuracy, macro F1, genes kept, and the solver's convergence
 #
-# Usage: sbatch Run_04.sh [max_cells_per_class]
-#        (python 04_Level2_Classifier_CV.py [max_cells_per_class])
+# Usage: sbatch slurm/Run_04.sh [max_cells_per_class]
+#        (python scripts/04_cv.py [max_cells_per_class])
 
 import os
 import time
@@ -29,11 +29,11 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
-from level2_classifier_common import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
+from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       one_hot, mean_log_loss, set_threads,
                                       get_class_weights, get_sample_weights)
-from multinomial_group_enet_torch import MultinomialGroupEnet, predict_proba
+from hbca_classifier.group_enet import MultinomialGroupEnet, predict_proba
 
 # torch warns that sparse CSR support is in beta; it doesn't affect the results
 warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in beta.*')
@@ -52,7 +52,7 @@ task = int(os.environ['SLURM_ARRAY_TASK_ID'])
 n_tasks = N_FOLDS * len(L1_RATIOS)
 if not 0 <= task < n_tasks:
     raise ValueError(f"array task {task} is out of range: there are {n_tasks} tasks (0-{n_tasks - 1}). "
-                     "Check that the --array line in Run_04.sh matches level2_classifier_common.py.")
+                     "Check that the --array line in slurm/Run_04.sh matches hbca_classifier/settings.py.")
 k, l1_index = divmod(task, len(L1_RATIOS))
 l1_ratio = L1_RATIOS[l1_index]
 threads = set_threads()

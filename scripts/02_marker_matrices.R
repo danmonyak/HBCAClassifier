@@ -1,4 +1,4 @@
-# 02_Marker_Gene_Matrices.R
+# 02_marker_matrices.R
 #
 # Builds two reduced expression matrices from the Human Breast Cell Atlas (HBCA,
 # Reed et al.), keeping only the published marker genes:
@@ -11,7 +11,7 @@
 # Produces: nothing saved yet. The two matrices are celltype.marker.expr and
 #           state.marker.expr (genes x cells, gene symbols as row names).
 #
-# Usage: Rscript 02_Marker_Gene_Matrices.R
+# Usage: Rscript scripts/02_marker_matrices.R
 
 library(SingleCellExperiment)
 library(dplyr)

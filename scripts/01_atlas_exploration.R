@@ -1,4 +1,4 @@
-# 01_Analysis.R
+# 01_atlas_exploration.R
 #
 # Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.), the reference used
 # for level-2 label transfer in Cell_Type_Assignment/02_SingleR_Reed_transfer.R.
@@ -7,7 +7,7 @@
 # Needs:    hbca-global.h5ad, in the folder set as HBCA_DIR in local_paths.env
 # Produces: nothing yet. It prints the atlas's size and main labels.
 #
-# Usage: Rscript 01_Analysis.R
+# Usage: Rscript scripts/01_atlas_exploration.R
 
 library(SingleCellExperiment)
 library(dplyr)

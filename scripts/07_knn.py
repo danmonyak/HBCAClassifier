@@ -1,4 +1,4 @@
-# 07_Level2_KNN.py
+# 07_knn.py
 #
 # A second tier-2 model: weighted k-nearest neighbours on the genes the tier-1 model (05) selected.
 # It uses the same cells as 06: the training set from 03 minus the same stratified validation
@@ -11,7 +11,7 @@
 # beta = 1 is unit variance, 0.5 is Pareto scaling, 0 is no scaling (each gene keeps its own
 # spread, so high-variance genes count more in the distance). k, gamma and beta are tuned together
 # by validation balanced accuracy. Settings (KNN_K, KNN_GAMMAS, KNN_BETAS) are in
-# level2_classifier_common.py.
+# hbca_classifier/settings.py.
 #
 # For each beta, the neighbours are found once per cell, at the largest k (brute force, in batches,
 # with PyTorch on all the job's CPUs), and every (k, gamma) is scored from the same neighbour lists.
@@ -27,8 +27,8 @@
 #           in figures/07/ (or .../07/cap<N>/): knn_tuning.png (validation balanced accuracy
 #           over k x gamma, one panel per beta) and knn_test_confusion_matrix.png
 #
-# Usage: python 07_Level2_KNN.py [max_cells_per_class] [max_genes]
-#        e.g. after `sbatch Run_05.sh 20000 40`: sbatch Run_07.sh 20000 40
+# Usage: python scripts/07_knn.py [max_cells_per_class] [max_genes]
+#        e.g. after `sbatch slurm/Run_05.sh 20000 40`: sbatch slurm/Run_07.sh 20000 40
 
 import os
 import sys
@@ -45,7 +45,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
+from hbca_classifier.settings import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared, set_threads)
 
 t_start = time.time()
