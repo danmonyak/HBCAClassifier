@@ -231,7 +231,7 @@ The network training and KNN votes come from `hbca_classifier/tier2_models.py`, 
 
 ### 11_transplant_thresholds.py
 
-Other ways to turn the TRANSPLANT networks' probabilities into calls. There's one network per trained gamma (0, 0.25, 0.5, 0.75, 1), and nothing is retrained: `11` reloads the networks `09` saved and recomputes their probabilities on `09`'s validation and test cells. Run it after `09`:
+Other ways to turn the TRANSPLANT networks' probabilities into calls. **The unweighted network (trained gamma 0) is the tier-2 model;** the others are kept for comparison. There's one network per trained gamma (0, 0.25, 0.5, 0.75, 1), and nothing is retrained: `11` reloads the networks `09` saved and recomputes their probabilities on `09`'s validation and test cells. Run it after `09`:
 
 ```
 sbatch slurm/Run_11.sh [other_threshold] [state_threshold]    # defaults 0.6 and 0.8
@@ -243,8 +243,10 @@ sbatch slurm/Run_11.sh [other_threshold] [state_threshold]    # defaults 0.6 and
   - `posthoc_test.csv`: for each trained gamma, test scores with the plain top class and with its best `gamma_post`.
   - `threshold_report_other<a>_state<b>.csv`: for each trained gamma, split and class: true cells, cells called that class, correct calls, precision, recall and the fraction left unclassified.
   - `threshold_summary_other<a>_state<b>.csv`: for each trained gamma and split: cells unclassified, accuracy of the classified cells, macro precision and macro recall.
+  - `family_report_other<a>_state<b>.csv`: for each trained gamma, split and true class: the fraction called that state, called its family, called something wrong, or left unclassified.
+  - `family_summary_other<a>_state<b>.csv`: for each trained gamma and split: the fraction unclassified (all cells and epithelial cells), the fraction of epithelial cells called at state and at family level, the accuracy of the calls, and each family call's count and precision.
   - `threshold_grid.csv`: validation macro precision, macro recall and fraction unclassified for every trained gamma x threshold pair.
-  - In `figures/11/`: `posthoc_reweighting.png`, `threshold_grid_gamma<g>.png`, and `threshold_confusion_gamma<g>_other<a>_state<b>.png` (test set, with an "Unclassified" column).
+  - In `figures/11/`: `posthoc_reweighting.png`, `threshold_grid_gamma<g>.png`, `threshold_confusion_gamma<g>_other<a>_state<b>.png` (test set, with an "Unclassified" column) and `family_confusion_gamma<g>_other<a>_state<b>.png` (the same, with LASP, LHS and BMYO columns).
 
 What it does:
 
@@ -252,6 +254,7 @@ What it does:
 - **Part A, post-hoc reweighting:** this asks whether training with class weights helps the network learn the rare states, or only shifts its decision rule. Each network's probabilities are multiplied by (1 / class frequency)^`gamma_post`, using the training set's frequencies, and the top class is the call. Negative `gamma_post` values undo a weighted network's weights. `gamma_post` is chosen per network by validation balanced accuracy, and the test set is scored once. **If the unweighted network (trained gamma 0) plus its best `gamma_post` does as well as the weighted networks, the weights only shift the decision rule.** An unweighted network's probabilities match the real class mix, so they're the ones to threshold.
 - **Part B, thresholds:** a cell is called "Other" if P(Other) is at least the Other threshold, or one of the 10 states if that state's probability is at least the state threshold. If several classes pass, the most probable one wins. Otherwise the cell is "Unclassified". **With the defaults (0.6 and 0.8) no cell can pass two thresholds,** because the probabilities sum to 1. That can only happen when two thresholds sum to 1 or less.
 - **Scores:** precision is correct calls ÷ cells called that class. Recall is correct calls ÷ all true cells of that class, so unclassified cells count as misses. Macro recall is then balanced accuracy with unclassified cells counted as wrong.
+- **Part C, family fallback:** as Part B, but a cell left unclassified is called LASP, LHS or BMYO if that family's summed probability (e.g. LASP1 + … + LASP5) is at least the state threshold. A family call counts as right if the cell's true state is in that family. The families are `FAMILIES` in `hbca_classifier/settings.py`.
 - **Threshold grid:** every pair from `THRESHOLD_GRID` (0.5 to 0.95), on validation only. **It's exploratory: choose thresholds from the grid, not from the test results,** or the test scores will look better than they are.
 
 The baseline and KNN aren't included, because `09` didn't save their validation scores. The settings (`POSTHOC_GAMMAS`, `THRESHOLD_GRID`) are in `hbca_classifier/settings.py`. `slurm/Run_11.sh`: 4 CPUs, 32G.

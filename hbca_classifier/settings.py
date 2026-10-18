@@ -25,6 +25,8 @@ KEEP_STATES = ['LASP1', 'LASP2', 'LASP3', 'LASP4', 'LASP5',
                'LHS1', 'LHS2', 'LHS3',
                'BMYO1', 'BMYO2']
 CLASSES = np.array(KEEP_STATES + ['Other'])      # fixed class order for coefficients and plots
+# The states' families (11 falls back to these when no single state is confident enough)
+FAMILIES = {'LASP': KEEP_STATES[:5], 'LHS': KEEP_STATES[5:8], 'BMYO': KEEP_STATES[8:]}
 
 TEST_SIZE = 0.3          # 70/30 train/test split
 N_FOLDS = 5              # cross-validation folds (on the training set)

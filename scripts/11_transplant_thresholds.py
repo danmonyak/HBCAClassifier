@@ -18,7 +18,11 @@
 #   Precision = correct / cells called that class. Recall = correct / all true cells of that class,
 #   so unclassified cells count as misses. Macro recall is then balanced accuracy with unclassified
 #   cells counted as wrong.
+# Part C, family fallback: as Part B, but a cell left unclassified is called LASP, LHS or BMYO if that
+#   family's summed probability (e.g. LASP1 + ... + LASP5) is at least the state threshold. A family call
+#   counts as right if the cell's true state is in that family.
 #
+# The unweighted network (trained gamma 0) is the tier-2 model; the others are kept for comparison.
 # The baseline and KNN aren't included: 09 didn't save their validation scores.
 #
 # Needs:    from 09, in <STORAGE_DIR>/reed_level2_transplant/: nn_gamma<g>.pt and gamma<g>.npz for every
@@ -31,11 +35,16 @@
 #                                      precision, recall, fraction unclassified
 #           threshold_summary<sfx>.csv per trained gamma and split: cells unclassified, accuracy of the
 #                                      classified cells, macro precision and recall
+#           family_report<sfx>.csv     per trained gamma, split and true class: fraction called the state,
+#                                      its family, something wrong, or left unclassified
+#           family_summary<sfx>.csv    per trained gamma and split: fractions unclassified and called at
+#                                      state / family level, accuracy of the calls, each family call's precision
 #           threshold_grid.csv       validation macro precision, macro recall and fraction unclassified per
 #                                    trained gamma x threshold pair
 #           (<sfx> = _other<a>_state<b>, the thresholds given)
 #           in figures/11/: posthoc_reweighting.png, threshold_grid_gamma<g>.png and
-#           threshold_confusion_gamma<g><sfx>.png (test set)
+#           threshold_confusion_gamma<g><sfx>.png and
+#           family_confusion_gamma<g><sfx>.png (test set)
 #
 # Usage: sbatch slurm/Run_11.sh [other_threshold] [state_threshold]     (defaults 0.6 and 0.8)
 
@@ -56,7 +65,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
 from hbca_classifier.settings import (OUTPUT_DIR, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_DROPOUT,
                                       TRANSPLANT_SOURCE_CAP, TRANSPLANT_SOURCE_MAX_GENES, TRANSPLANT_GAMMAS,
-                                      POSTHOC_GAMMAS, THRESHOLD_GRID, get_classifier_dir, get_figure_dir,
+                                      POSTHOC_GAMMAS, THRESHOLD_GRID, KEEP_STATES, FAMILIES, get_classifier_dir, get_figure_dir,
                                       load_prepared, set_threads)
 from hbca_classifier.tier2_models import network_proba
 
@@ -231,6 +240,75 @@ summary_df = pd.DataFrame(summaries)
 summary_df.to_csv(os.path.join(out_dir, f'threshold_summary{sfx}.csv'), index=False)
 print("\nPart B summary:")
 print(summary_df.round(4).to_string(index=False))
+
+
+# ---------------------- Part C: family fallback
+def family_predict(P_, o_t, s_t):
+    """Part B's calls, but a cell left unclassified is called LASP, LHS or BMYO if that family's summed
+    probability is at least the state threshold."""
+    pred = threshold_predict(P_, o_t, s_t)
+    F = np.column_stack([P_[:, np.isin(CLASSES, members)].sum(axis=1) for members in FAMILIES.values()])
+    fallback = (pred == 'Unclassified') & (F.max(axis=1) >= s_t)
+    pred[fallback] = np.array(list(FAMILIES))[F.argmax(axis=1)[fallback]]
+    return pred
+
+
+family_of = {s: fam for fam, members in FAMILIES.items() for s in members}
+fam_reports, fam_summaries = [], []
+for g in TRANSPLANT_GAMMAS:
+    for split, key, y_true in [('test', 'test', y_test), ('validation', 'val', y_val)]:
+        pred = family_predict(P[g][key], other_t, state_t)
+        true_family = np.array([family_of.get(s, 'Other') for s in y_true])
+        classified = pred != 'Unclassified'
+        # A call is right if it's the true state, or the true state's family
+        right = (pred == y_true) | (pred == true_family)
+        rows = []
+        for c in CLASSES:
+            is_c = y_true == c
+            rows.append(dict(state=c, n_true=is_c.sum(), frac_state=(pred[is_c] == c).mean(),
+                             frac_family=(pred[is_c] == family_of.get(c, '-')).mean(),
+                             frac_wrong=(classified & ~right)[is_c].mean(),
+                             frac_unclassified=(~classified[is_c]).mean()))
+        report = pd.DataFrame(rows)
+        fam_reports.append(report.assign(gamma_trained=g, split=split))
+        epithelial = y_true != 'Other'
+        summary = dict(gamma_trained=g, split=split, n_cells=len(y_true),
+                       frac_unclassified=(~classified).mean(),
+                       frac_epithelial_unclassified=(~classified[epithelial]).mean(),
+                       frac_epithelial_state_call=np.isin(pred[epithelial], KEEP_STATES).mean(),
+                       frac_epithelial_family_call=np.isin(pred[epithelial], list(FAMILIES)).mean(),
+                       accuracy_classified=right[classified].mean())
+        for fam in FAMILIES:     # precision of each family call: its cells truly in that family
+            called = pred == fam
+            summary[f'n_called_{fam}'] = called.sum()
+            summary[f'precision_{fam}'] = (true_family[called] == fam).mean() if called.any() else np.nan
+        fam_summaries.append(summary)
+        if split == 'test':
+            print(f"\nPart C, network trained with gamma {g}, test set, family fallback at {state_t:g}: "
+                  f"{100 * summary['frac_unclassified']:.1f}% of cells unclassified "
+                  f"({100 * summary['frac_epithelial_unclassified']:.1f}% of epithelial cells), "
+                  f"accuracy of the rest {summary['accuracy_classified']:.4f} (a family call counts if it's the right family)")
+            print(report.round(3).to_string(index=False))
+            print("Family calls: " + ", ".join(f"{fam} {summary[f'n_called_{fam}']:,} (precision "
+                                               f"{summary[f'precision_{fam}']:.3f})" for fam in FAMILIES))
+            cols = list(CLASSES) + list(FAMILIES) + ['Unclassified']
+            cm = pd.crosstab(pd.Series(y_true, name='True'), pd.Series(pred, name='Predicted'), normalize='index') \
+                .reindex(index=CLASSES, columns=cols, fill_value=0)
+            fig, ax = plt.subplots(figsize=(12, 7.5))
+            sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', vmin=0, vmax=1,
+                        cbar_kws={'label': 'Fraction of true class'}, ax=ax)
+            ax.set(title=f'TRANSPLANT network (trained gamma {g}), test set, family fallback\n'
+                         f'thresholds: Other {other_t:g}, states and families {state_t:g}; '
+                         f"{100 * summary['frac_unclassified']:.1f}% unclassified")
+            fig.tight_layout()
+            fig.savefig(os.path.join(figure_outdir_cur, f'family_confusion_gamma{g}{sfx}.png'), dpi=200)
+            plt.close(fig)
+pd.concat(fam_reports)[['gamma_trained', 'split'] + list(fam_reports[0].columns[:-2])] \
+    .to_csv(os.path.join(out_dir, f'family_report{sfx}.csv'), index=False)
+fam_summary_df = pd.DataFrame(fam_summaries)
+fam_summary_df.to_csv(os.path.join(out_dir, f'family_summary{sfx}.csv'), index=False)
+print("\nPart C summary:")
+print(fam_summary_df.round(4).to_string(index=False))
 
 # Exploratory grid of threshold pairs, on validation only
 rows = []
