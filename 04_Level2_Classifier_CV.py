@@ -12,13 +12,13 @@
 # Cells are weighted by inverse class frequency, so rare classes (e.g. LASP5) count as much as
 # common ones, in the fit and in the held-out log-loss.
 #
-# Needs:    X.npz and prep.npz from 03, in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/
+# Needs:    X.npz and prep.npz from 03, in <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/
 #           SLURM_ARRAY_TASK_ID (set by SLURM; set it by hand to run one task outside an array)
 # Produces: cv/fold<k>_l1ratio<r>.csv in the same folder: one row per alpha, with the held-out
 #           log-loss, accuracy, balanced accuracy, macro F1, genes kept, and the solver's convergence
 #
-# Usage: sbatch Run_04.sh [cellranger_run_name] [max_cells_per_class]
-#        (python 04_Level2_Classifier_CV.py [cellranger_run_name] [max_cells_per_class])
+# Usage: sbatch Run_04.sh [max_cells_per_class]
+#        (python 04_Level2_Classifier_CV.py [max_cells_per_class])
 
 import os
 import time
@@ -41,9 +41,9 @@ warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in bet
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name, max_cells_per_class = get_args()
-clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
-get_figure_dir(cellranger_run_name, max_cells_per_class, '04')   # no figures; made like every step
+max_cells_per_class = get_args()
+clf_dir = get_classifier_dir(max_cells_per_class)
+get_figure_dir(max_cells_per_class, '04')   # no figures; made like every step
 cv_dir = os.path.join(clf_dir, 'cv')
 os.makedirs(cv_dir, exist_ok=True)
 
@@ -56,7 +56,7 @@ if not 0 <= task < n_tasks:
 k, l1_index = divmod(task, len(L1_RATIOS))
 l1_ratio = L1_RATIOS[l1_index]
 threads = set_threads()
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}")
+print(f"Max cells per class: {max_cells_per_class}")
 print(f"Task {task}: fold {k}, l1_ratio {l1_ratio}, {threads} threads\n")
 
 # ---------------------- Data for this fold

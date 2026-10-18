@@ -16,16 +16,16 @@
 # Genes are centred and scaled to unit variance on the training part (network and baseline); KNN
 # scales them by SD^beta.
 #
-# Needs:    X.npz and prep.npz from 03 on the full data, in <STORAGE_DIR>/<run>/reed_level2_classifier/
+# Needs:    X.npz and prep.npz from 03 on the full data, in <STORAGE_DIR>/reed_level2_classifier/
 #           prep.npz and model_max<G>genes.npz from the source run, in .../reed_level2_classifier_cap<N>/
-# Produces: in <STORAGE_DIR>/<run>/reed_level2_transplant/:
+# Produces: in <STORAGE_DIR>/reed_level2_transplant/:
 #           gamma<g>.npz    per network/baseline task: validation balanced accuracy and macro F1, and the
 #                           test-set class probabilities, for both models; nn_gamma<g>.pt (the network)
 #                           and nn_training_curve_gamma<g>.csv
 #           knn.npz         the KNN tuning grid's validation scores, and the chosen setting's test scores
 #           test_cells.csv.gz  the test cells and their states (the same in every task)
 #
-# Usage: sbatch Run_09.sh [cellranger_run_name]
+# Usage: sbatch Run_09.sh
 
 import os
 import sys
@@ -47,20 +47,19 @@ from level2_tier2_models import train_network, network_proba, knn_class_vote_sum
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else '90'
-out_dir = os.path.join(OUTPUT_DIR, cellranger_run_name, 'reed_level2_transplant')
+out_dir = os.path.join(OUTPUT_DIR, 'reed_level2_transplant')
 os.makedirs(out_dir, exist_ok=True)
-get_figure_dir(cellranger_run_name, None, '09')   # no figures (10 makes them); made like every step
+get_figure_dir(None, '09')   # no figures (10 makes them); made like every step
 task = int(os.environ['SLURM_ARRAY_TASK_ID'])
 n_tasks = len(TRANSPLANT_GAMMAS) + 1
 if not 0 <= task < n_tasks:
     raise ValueError(f"array task {task} is out of range: there are {n_tasks} tasks (0-{n_tasks - 1}). "
                      "Check that the --array line in Run_09.sh matches TRANSPLANT_GAMMAS.")
 threads = set_threads()
-print(f"Cellranger run: {cellranger_run_name}, task {task}, {threads} threads")
+print(f"Task {task}, {threads} threads")
 
 # ---------------------- The source run's genes, and the cells it trained on
-src_dir = get_classifier_dir(cellranger_run_name, TRANSPLANT_SOURCE_CAP)
+src_dir = get_classifier_dir(TRANSPLANT_SOURCE_CAP)
 with np.load(os.path.join(src_dir, f'model_max{TRANSPLANT_SOURCE_MAX_GENES}genes.npz')) as f:
     selected = np.linalg.norm(f['W'], axis=1) > 0
     src_genes = f['genes']
@@ -69,7 +68,7 @@ with np.load(os.path.join(src_dir, 'prep.npz')) as f:
 print(f"{selected.sum()} genes from the {TRANSPLANT_SOURCE_CAP:,}-per-class run: {', '.join(src_genes[selected])}\n")
 
 # ---------------------- Full data: split, test cells, scaling
-X, prep = load_prepared(get_classifier_dir(cellranger_run_name, None))
+X, prep = load_prepared(get_classifier_dir(None))
 assert (prep['genes'] == src_genes).all(), "gene order differs between the source run and the full-data prep"
 X = X[:, np.flatnonzero(selected)].toarray()
 y, cells = prep['y'], prep['cells']

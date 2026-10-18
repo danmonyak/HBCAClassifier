@@ -4,12 +4,12 @@
 # (l1_ratio, alpha) pair with the lowest mean held-out log-loss, refits it on the whole training
 # set, and evaluates it on the test set. Cells are weighted by inverse class frequency, as in 04.
 #
-# Optional max_genes (third argument): pick the best pair among those that keep at most that many
+# Optional max_genes (second argument): pick the best pair among those that keep at most that many
 # genes (mean over the CV folds) instead. Its outputs get a _max<N>genes suffix, so they don't
 # overwrite the unconstrained ones. The refitted model can keep a few more or fewer genes than
 # the CV mean.
 #
-# Needs:    from 03 and 04, in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/:
+# Needs:    from 03 and 04, in <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/:
 #           X.npz, prep.npz, and all 20 cv/fold<k>_l1ratio<r>.csv files
 # Produces: in that folder:
 #           cv_summary.csv   mean CV results for every l1_ratio and alpha (and their standard errors)
@@ -18,12 +18,12 @@
 #           test_report.csv  per-class precision, recall and F1 on the test set
 #           model.npz        W, b, the genes, classes and the scaler's per-gene scale, to apply the
 #                            model to other cells: P = softmax((x / scale) @ W + b)
-#           in figures/<run>/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes
+#           in figures/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes
 #           kept against alpha) and test_confusion_matrix.png
 #           With max_genes, every file above except cv_summary.csv gets a _max<N>genes suffix.
 #
-# Usage: python 05_Level2_Classifier_Fit.py [cellranger_run_name] [max_cells_per_class] [max_genes]
-#        e.g. the full data, at most 200 genes: sbatch Run_05.sh 90 none 200
+# Usage: python 05_Level2_Classifier_Fit.py [max_cells_per_class] [max_genes]
+#        e.g. the full data, at most 200 genes: sbatch Run_05.sh none 200
 
 import os
 import sys
@@ -51,13 +51,13 @@ warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in bet
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name, max_cells_per_class = get_args()
-clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
-figure_outdir_cur = get_figure_dir(cellranger_run_name, max_cells_per_class, '05')
+max_cells_per_class = get_args()
+clf_dir = get_classifier_dir(max_cells_per_class)
+figure_outdir_cur = get_figure_dir(max_cells_per_class, '05')
 threads = set_threads()
-max_genes = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none') else None
+max_genes = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ('', 'none') else None
 suffix = '' if max_genes is None else f'_max{max_genes}genes'     # added to every output file name
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}, "
+print(f"Max cells per class: {max_cells_per_class}, "
       f"max genes: {max_genes}, {threads} threads\n")
 
 # ---------------------- Collect the CV results

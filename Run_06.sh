@@ -13,4 +13,4 @@ source $HOME/.bashrc
 conda activate torch
 export PYTHONUNBUFFERED=1
 
-python 06_Level2_NN.py "$1" "$2" "$3" "$4"
+python 06_Level2_NN.py "$1" "$2" "$3"

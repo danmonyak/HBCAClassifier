@@ -12,4 +12,4 @@
 source $HOME/.bashrc
 conda activate renv
 
-Rscript 01_Analysis.R $1
+Rscript 01_Analysis.R

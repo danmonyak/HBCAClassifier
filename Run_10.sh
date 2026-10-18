@@ -13,4 +13,4 @@ source $HOME/.bashrc
 conda activate torch
 export PYTHONUNBUFFERED=1
 
-python 10_Transplant_Summary.py "$1"
+python 10_Transplant_Summary.py

@@ -17,18 +17,18 @@
 # with PyTorch on all the job's CPUs), and every (k, gamma) is scored from the same neighbour lists.
 #
 # Needs:    from 03 and 05 (run with the same arguments), in
-#           <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/: X.npz, prep.npz, model[_max<G>genes].npz
+#           <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/: X.npz, prep.npz, model[_max<G>genes].npz
 #           Optional: nn_comparison[_max<G>genes].csv from 06, to compare with the network and baseline.
 # Produces: in that folder (all with the _max<G>genes suffix when max_genes is given):
 #           knn_tuning.csv       validation balanced accuracy and macro F1 for every (k, gamma, beta)
 #           knn_test_report.csv  per-class precision, recall and F1 on the test set
 #           knn_comparison.csv   test accuracy, balanced accuracy and macro F1 for KNN, plus the
 #                                network and baseline rows from 06 if they exist
-#           in figures/<run>/07/ (or .../07/cap<N>/): knn_tuning.png (validation balanced accuracy
+#           in figures/07/ (or .../07/cap<N>/): knn_tuning.png (validation balanced accuracy
 #           over k x gamma, one panel per beta) and knn_test_confusion_matrix.png
 #
-# Usage: python 07_Level2_KNN.py [cellranger_run_name] [max_cells_per_class] [max_genes]
-#        e.g. after `sbatch Run_05.sh 90 20000 40`: sbatch Run_07.sh 90 20000 40
+# Usage: python 07_Level2_KNN.py [max_cells_per_class] [max_genes]
+#        e.g. after `sbatch Run_05.sh 20000 40`: sbatch Run_07.sh 20000 40
 
 import os
 import sys
@@ -51,13 +51,13 @@ from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K,
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name, max_cells_per_class = get_args()
-max_genes = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none') else None
+max_cells_per_class = get_args()
+max_genes = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ('', 'none') else None
 suffix = '' if max_genes is None else f'_max{max_genes}genes'     # matches 05's output names
-clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
-figure_outdir_cur = get_figure_dir(cellranger_run_name, max_cells_per_class, '07')
+clf_dir = get_classifier_dir(max_cells_per_class)
+figure_outdir_cur = get_figure_dir(max_cells_per_class, '07')
 threads = set_threads()
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}, "
+print(f"Max cells per class: {max_cells_per_class}, "
       f"max genes: {max_genes}, {threads} threads\n")
 
 # ---------------------- The genes selected by the tier-1 model (05)

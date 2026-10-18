@@ -8,16 +8,16 @@
 # centred and scaled to unit variance over the plotted cells. UMAP itself isn't seeded, so it runs
 # on all the job's cores; its layout differs slightly between runs.
 #
-# Needs:    model[_max<G>genes].npz from 05, in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/
+# Needs:    model[_max<G>genes].npz from 05, in <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/
 #           X.npz and prep.npz from 03 run on the full data (no cap), in
-#           <STORAGE_DIR>/<run>/reed_level2_classifier/ (they hold every cell)
+#           <STORAGE_DIR>/reed_level2_classifier/ (they hold every cell)
 # Produces: umap[_max<G>genes].csv.gz in that run's folder (cell, state, UMAP1, UMAP2), and
-#           figures/<run>/08/ (or .../08/cap<N>/): umap[_max<G>genes].png
+#           figures/08/ (or .../08/cap<N>/): umap[_max<G>genes].png
 #
 # Runs in the base conda environment (it has umap-learn; the torch environment doesn't).
 #
-# Usage: python 08_Level2_UMAP.py [cellranger_run_name] [max_cells_per_class] [max_genes]
-#        e.g. sbatch Run_08.sh 90 20000 40
+# Usage: python 08_Level2_UMAP.py [max_cells_per_class] [max_genes]
+#        e.g. sbatch Run_08.sh 20000 40
 
 import os
 import sys
@@ -37,12 +37,12 @@ from level2_classifier_common import (KEEP_STATES, CLASSES, RANDOM_STATE, UMAP_N
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name, max_cells_per_class = get_args()
-max_genes = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none') else None
+max_cells_per_class = get_args()
+max_genes = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ('', 'none') else None
 suffix = '' if max_genes is None else f'_max{max_genes}genes'     # matches 05's output names
-clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
-figure_outdir_cur = get_figure_dir(cellranger_run_name, max_cells_per_class, '08')
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}, max genes: {max_genes}\n")
+clf_dir = get_classifier_dir(max_cells_per_class)
+figure_outdir_cur = get_figure_dir(max_cells_per_class, '08')
+print(f"Max cells per class: {max_cells_per_class}, max genes: {max_genes}\n")
 
 # ---------------------- The genes selected by the tier-1 model (05)
 model_file = os.path.join(clf_dir, f'model{suffix}.npz')
@@ -56,7 +56,7 @@ print(f"{len(genes)} genes selected by 05: {', '.join(genes)}\n")
 
 # ---------------------- The atlas cells, on the selected genes
 # The full-data prep (03 with no cap) holds every cell; its genes are in the same order as every run's
-full_dir = get_classifier_dir(cellranger_run_name, None)
+full_dir = get_classifier_dir(None)
 if not os.path.exists(os.path.join(full_dir, 'X.npz')):
     raise FileNotFoundError(f"{full_dir}/X.npz not found: run 03 on the full data (no cap) first")
 X, prep = load_prepared(full_dir)

@@ -4,16 +4,16 @@
 # network and for the baseline by validation balanced accuracy (KNN chose its own k, gamma and beta
 # in 09), and scores the chosen models once on the test set.
 #
-# Needs:    from 09, in <STORAGE_DIR>/<run>/reed_level2_transplant/: gamma<g>.npz for every
+# Needs:    from 09, in <STORAGE_DIR>/reed_level2_transplant/: gamma<g>.npz for every
 #           TRANSPLANT_GAMMAS value, knn.npz and test_cells.csv.gz
 # Produces: in that folder:
 #           gamma_tuning.csv          validation balanced accuracy and macro F1 per gamma, network and baseline
 #           transplant_comparison.csv test log-loss (class-weighted), accuracy, balanced accuracy and macro F1
 #                                     for the three chosen models
 #           <model>_test_report.csv   per-class precision, recall and F1 (model: nn, baseline, knn)
-#           in figures/<run>/10/: gamma_tuning.png and <model>_test_confusion_matrix.png
+#           in figures/10/: gamma_tuning.png and <model>_test_confusion_matrix.png
 #
-# Usage: sbatch Run_10.sh [cellranger_run_name]
+# Usage: sbatch Run_10.sh
 
 import os
 import sys
@@ -30,9 +30,8 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
 from level2_classifier_common import (OUTPUT_DIR, CLASSES, TRANSPLANT_GAMMAS, TRANSPLANT_SOURCE_CAP,
                                       get_figure_dir, get_class_weights, mean_log_loss)
 
-cellranger_run_name = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else '90'
-out_dir = os.path.join(OUTPUT_DIR, cellranger_run_name, 'reed_level2_transplant')
-figure_outdir_cur = get_figure_dir(cellranger_run_name, None, '10')
+out_dir = os.path.join(OUTPUT_DIR, 'reed_level2_transplant')
+figure_outdir_cur = get_figure_dir(None, '10')
 
 files = [os.path.join(out_dir, f'gamma{g}.npz') for g in TRANSPLANT_GAMMAS] + [os.path.join(out_dir, 'knn.npz')]
 missing = [f for f in files if not os.path.exists(f)]

@@ -13,4 +13,4 @@ source $HOME/.bashrc
 conda activate base
 export PYTHONUNBUFFERED=1
 
-python 08_Level2_UMAP.py "$1" "$2" "$3"
+python 08_Level2_UMAP.py "$1" "$2"

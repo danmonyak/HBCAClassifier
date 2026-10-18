@@ -15,4 +15,4 @@ source $HOME/.bashrc
 conda activate torch
 export PYTHONUNBUFFERED=1
 
-python 09_Transplant_Tier2.py "$1"
+python 09_Transplant_Tier2.py

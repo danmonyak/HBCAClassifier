@@ -7,7 +7,7 @@
 # Needs:    hbca-global.h5ad, in the folder set as HBCA_DIR in local_paths.env
 # Produces: nothing yet. It prints the atlas's size and main labels.
 #
-# Usage: Rscript 01_Analysis.R [cellranger_run_name]
+# Usage: Rscript 01_Analysis.R
 
 library(SingleCellExperiment)
 library(dplyr)
@@ -19,18 +19,15 @@ library(scuttle)
 library(scater)
 library(anndataR)
 
-# Standard header: load the folder config, read the run name (default 90),
-# and set up the storage folder and this script's figure folder.
-source(file.path(repo_dir, "RNAseq_SingleCell", "Reed_Explore", "config.R"))
-cellranger_run_name <- get_cellranger_run_name_cmd_arg()
-output_dir <- file.path(OUTPUT_DIR, cellranger_run_name)
+# Header: load the config (from the repo root, where the script must be run), and set up
+# the storage folder and this script's figure folder.
+source("config.R")
+output_dir <- OUTPUT_DIR
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-figure_outdir_run = file.path(figure_outdir, cellranger_run_name)
-figure_outdir_cur = file.path(figure_outdir_run, '01')
+figure_outdir_cur = file.path(figure_outdir, '01')
 dir.create(figure_outdir_cur, recursive = TRUE, showWarnings = FALSE)
 
-cat(sprintf("\nCellranger run: %s\n", cellranger_run_name))
 cat(sprintf("%s\n\n\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S")))
 
 # Make random steps (UMAP, clustering, subsampling) reproducible
@@ -88,7 +85,7 @@ catObj(head(round(donor.level2.props, 3)))
 # fraction of each donor's cells of that type (not all their cells), so every row
 # sums to 1. Prints the table and each donor's cell count (proportions are less
 # reliable for donors with few cells), and saves a stacked bar plot with one bar
-# per donor to figures/<run>/01/<name>_subtypes_per_donor.png.
+# per donor to figures/01/<name>_subtypes_per_donor.png.
 # Returns a list: counts (table), props (table), props.df (data frame with donor_id first).
 get_donor_subtype_props <- function(subtypes, name) {
   is.subtype <- reed$level2 %in% subtypes

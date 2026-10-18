@@ -11,19 +11,19 @@
 # used once, at the end. Settings are in level2_classifier_common.py.
 #
 # Needs:    from 03 and 05 (run with the same arguments), in
-#           <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/: X.npz, prep.npz, model[_max<G>genes].npz
+#           <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/: X.npz, prep.npz, model[_max<G>genes].npz
 # Produces: in that folder (all with the _max<G>genes suffix when max_genes is given):
 #           nn.pt                 the network's weights, plus the genes, classes and input scaling
 #           nn_comparison.csv     test log-loss, accuracy, balanced accuracy and macro F1, for both models
 #           nn_test_report.csv, baseline_test_report.csv   per-class precision, recall and F1 on the test set
-#           in figures/<run>/06/ (or .../06/cap<N>/): nn_training_curve.png (training and validation
+#           in figures/06/ (or .../06/cap<N>/): nn_training_curve.png (training and validation
 #           loss per epoch), nn_test_confusion_matrix.png and baseline_test_confusion_matrix.png
 #
-# Optional 4th argument: the name of another network shape in NN_ARCHITECTURES (e.g. deep). Every
+# Optional 3rd argument: the name of another network shape in NN_ARCHITECTURES (e.g. deep). Every
 # output then gets an extra _<name> suffix, so the default network's results are kept.
 #
-# Usage: python 06_Level2_NN.py [cellranger_run_name] [max_cells_per_class] [max_genes] [architecture]
-#        e.g. after `sbatch Run_05.sh 90 300 40`: sbatch Run_06.sh 90 300 40
+# Usage: python 06_Level2_NN.py [max_cells_per_class] [max_genes] [architecture]
+#        e.g. after `sbatch Run_05.sh 300 40`: sbatch Run_06.sh 300 40
 
 import copy
 import os
@@ -52,19 +52,19 @@ from level2_classifier_common import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HID
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name, max_cells_per_class = get_args()
-max_genes = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none') else None
+max_cells_per_class = get_args()
+max_genes = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ('', 'none') else None
 suffix = '' if max_genes is None else f'_max{max_genes}genes'     # matches 05's output names
-architecture = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] not in ('', 'none', 'default') else None
+architecture = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] not in ('', 'none', 'default') else None
 if architecture is not None and architecture not in NN_ARCHITECTURES:
     raise ValueError(f"unknown architecture {architecture!r}: choose from {list(NN_ARCHITECTURES)}")
 hidden = NN_HIDDEN if architecture is None else NN_ARCHITECTURES[architecture]
 out = suffix + ('' if architecture is None else f'_{architecture}')   # this run's output file suffix
-clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
-figure_outdir_cur = get_figure_dir(cellranger_run_name, max_cells_per_class, '06')
+clf_dir = get_classifier_dir(max_cells_per_class)
+figure_outdir_cur = get_figure_dir(max_cells_per_class, '06')
 threads = set_threads()
 torch.manual_seed(RANDOM_STATE)
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}, "
+print(f"Max cells per class: {max_cells_per_class}, "
       f"max genes: {max_genes}, {threads} threads\n")
 
 # ---------------------- The genes selected by 05

@@ -11,7 +11,7 @@
 # Produces: nothing saved yet. The two matrices are celltype.marker.expr and
 #           state.marker.expr (genes x cells, gene symbols as row names).
 #
-# Usage: Rscript 02_Marker_Gene_Matrices.R [cellranger_run_name]
+# Usage: Rscript 02_Marker_Gene_Matrices.R
 
 library(SingleCellExperiment)
 library(dplyr)
@@ -20,18 +20,15 @@ library(Matrix)
 library(anndataR)
 library(readxl)
 
-# Standard header: load the folder config, read the run name (default 90),
-# and set up the storage folder and this script's figure folder.
-source(file.path(repo_dir, "RNAseq_SingleCell", "Reed_Explore", "config.R"))
-cellranger_run_name <- get_cellranger_run_name_cmd_arg()
-output_dir <- file.path(OUTPUT_DIR, cellranger_run_name)
+# Header: load the config (from the repo root, where the script must be run), and set up
+# the storage folder and this script's figure folder.
+source("config.R")
+output_dir <- OUTPUT_DIR
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-figure_outdir_run = file.path(figure_outdir, cellranger_run_name)
-figure_outdir_cur = file.path(figure_outdir_run, '02')
+figure_outdir_cur = file.path(figure_outdir, '02')
 dir.create(figure_outdir_cur, recursive = TRUE, showWarnings = FALSE)
 
-cat(sprintf("\nCellranger run: %s\n", cellranger_run_name))
 cat(sprintf("%s\n\n\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S")))
 
 # Make random steps (UMAP, clustering, subsampling) reproducible

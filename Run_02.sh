@@ -12,4 +12,4 @@
 source $HOME/.bashrc
 conda activate renv
 
-Rscript 02_Marker_Gene_Matrices.R $1
+Rscript 02_Marker_Gene_Matrices.R

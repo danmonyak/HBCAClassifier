@@ -5,14 +5,14 @@
 # non-epithelial state as "Other", makes the 70/30 train/test split and the 5 CV folds, and
 # sets the alpha grid for each l1_ratio. Settings are in level2_classifier_common.py.
 #
-# Needs:    from 02_Marker_Gene_Matrices.R, in <STORAGE_DIR>/<run>/:
+# Needs:    from 02_Marker_Gene_Matrices.R, in <STORAGE_DIR>/:
 #           reed_state_marker_expr.mtx.gz, .genes.txt.gz, .cells.txt.gz, reed_cell_labels.csv.gz
-# Produces: in <STORAGE_DIR>/<run>/reed_level2_classifier[_cap<N>]/:
+# Produces: in <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/:
 #           X.npz     cells x genes log-normalized expression (unscaled, sparse), after any cap
 #           prep.npz  cells, genes, labels (y), train/test indices, CV fold of each training
 #                     cell, and the alpha grid for each l1_ratio
 #
-# Usage: python 03_Level2_Classifier_Prep.py [cellranger_run_name] [max_cells_per_class]
+# Usage: python 03_Level2_Classifier_Prep.py [max_cells_per_class]
 
 import os
 import time
@@ -32,11 +32,11 @@ from level2_classifier_common import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZ
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
 
-cellranger_run_name, max_cells_per_class = get_args()
-data_dir = os.path.join(OUTPUT_DIR, cellranger_run_name)       # where 02 saved its files
-clf_dir = get_classifier_dir(cellranger_run_name, max_cells_per_class)
-get_figure_dir(cellranger_run_name, max_cells_per_class, '03')   # no figures yet; made like every step
-print(f"Cellranger run: {cellranger_run_name}, max cells per class: {max_cells_per_class}")
+max_cells_per_class = get_args()
+data_dir = OUTPUT_DIR       # where 02 saved its files
+clf_dir = get_classifier_dir(max_cells_per_class)
+get_figure_dir(max_cells_per_class, '03')   # no figures yet; made like every step
+print(f"Max cells per class: {max_cells_per_class}")
 print(f"Output folder: {clf_dir}\n")
 
 # ---------------------- Load the cell state marker matrix and the labels

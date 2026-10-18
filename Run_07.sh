@@ -13,4 +13,4 @@ source $HOME/.bashrc
 conda activate torch
 export PYTHONUNBUFFERED=1
 
-python 07_Level2_KNN.py "$1" "$2" "$3"
+python 07_Level2_KNN.py "$1" "$2"
