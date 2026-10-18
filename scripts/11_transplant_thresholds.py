@@ -202,8 +202,8 @@ def threshold_scores(y_true, pred):
 
 reports, summaries = [], []
 for g in TRANSPLANT_GAMMAS:
-    for split, y_true in [('test', y_test), ('validation', y_val)]:
-        pred = threshold_predict(P[g][split], other_t, state_t)
+    for split, key, y_true in [('test', 'test', y_test), ('validation', 'val', y_val)]:
+        pred = threshold_predict(P[g][key], other_t, state_t)
         report, summary = threshold_scores(y_true, pred)
         reports.append(report.assign(gamma_trained=g, split=split))
         summaries.append(dict(gamma_trained=g, split=split, **summary))
