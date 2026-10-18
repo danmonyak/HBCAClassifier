@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 from hbca_classifier.settings import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZE, N_FOLDS, RANDOM_STATE,
                                       L1_RATIOS, N_ALPHAS, ALPHA_MIN,
                                       get_args, get_classifier_dir, get_figure_dir, one_hot,
-                                      get_class_weights, get_sample_weights)
+                                      get_class_weights, get_sample_weights, get_scaling_weights, GENE_SCALING)
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -36,7 +36,7 @@ max_cells_per_class = get_args()
 data_dir = OUTPUT_DIR       # where 02 saved its files
 clf_dir = get_classifier_dir(max_cells_per_class)
 get_figure_dir(max_cells_per_class, '03')   # no figures yet; made like every step
-print(f"Max cells per class: {max_cells_per_class}")
+print(f"Max cells per class: {max_cells_per_class}, gene scaling: {GENE_SCALING}")
 print(f"Output folder: {clf_dir}\n")
 
 # ---------------------- Load the cell state marker matrix and the labels
@@ -88,7 +88,7 @@ log(f"train: {len(idx_train):,} cells, test: {len(idx_test):,} cells, {N_FOLDS} 
 # results can be averaged. alpha_max is the smallest alpha that drops every gene: there the
 # model is the intercept alone, which predicts the (class-weighted) class frequencies. Cells are
 # weighted by inverse class frequency, as in the fits (04, 05).
-X_train = StandardScaler(with_mean=False).fit_transform(X_all[idx_train])
+X_train = StandardScaler(with_mean=False).fit_transform(X_all[idx_train], sample_weight=get_scaling_weights(y_train))
 Y_train = one_hot(y_train)
 w = get_sample_weights(y_train, get_class_weights(y_train))[:, None]
 P0 = np.tile((w * Y_train).sum(axis=0) / w.sum(), (X_train.shape[0], 1))

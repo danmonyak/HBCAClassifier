@@ -8,7 +8,8 @@
 # The model is multinomial logistic regression with a group elastic net penalty (each gene's
 # coefficients across all classes form one group), fitted with PyTorch on all the job's CPU
 # cores (hbca_classifier/group_enet.py). Genes are scaled to unit variance on the fold's
-# training part only (not centred, which keeps the matrix sparse). The intercept isn't penalized.
+# training part only (not centred, which keeps the matrix sparse); with HBCA_SCALING=balanced, the
+# variance is class-weighted (GENE_SCALING in hbca_classifier/settings.py). The intercept isn't penalized.
 # Cells are weighted by inverse class frequency, so rare classes (e.g. LASP5) count as much as
 # common ones, in the fit and in the held-out log-loss.
 #
@@ -32,7 +33,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       one_hot, mean_log_loss, set_threads,
-                                      get_class_weights, get_sample_weights)
+                                      get_class_weights, get_sample_weights, get_scaling_weights, GENE_SCALING)
 from hbca_classifier.group_enet import MultinomialGroupEnet, predict_proba
 
 # torch warns that sparse CSR support is in beta; it doesn't affect the results
@@ -56,7 +57,7 @@ if not 0 <= task < n_tasks:
 k, l1_index = divmod(task, len(L1_RATIOS))
 l1_ratio = L1_RATIOS[l1_index]
 threads = set_threads()
-print(f"Max cells per class: {max_cells_per_class}")
+print(f"Max cells per class: {max_cells_per_class}, gene scaling: {GENE_SCALING}")
 print(f"Task {task}: fold {k}, l1_ratio {l1_ratio}, {threads} threads\n")
 
 # ---------------------- Data for this fold
@@ -68,7 +69,7 @@ idx_train, fold = prep['idx_train'], prep['fold']
 tr, va = idx_train[fold != k], idx_train[fold == k]
 y_tr, y_va = prep['y'][tr], prep['y'][va]
 
-scaler = StandardScaler(with_mean=False).fit(X[tr])
+scaler = StandardScaler(with_mean=False).fit(X[tr], sample_weight=get_scaling_weights(y_tr))
 X_tr, X_va = scaler.transform(X[tr]), scaler.transform(X[va])
 del X
 log(f"fold {k}: fitting on {len(tr):,} cells, scoring on {len(va):,}")

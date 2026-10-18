@@ -98,8 +98,25 @@ The model:
 - **Classes:** the 10 epithelial cell states (`LASP1`–`LASP5`, `LHS1`–`LHS3`, `BMYO1`–`BMYO2`). Every other `level2` label becomes `"Other"`. `"Other"` is by far the largest class (about 460,000 of 803,283 cells), so the results include balanced accuracy and per-class scores as well as accuracy.
 - **Model:** multinomial logistic regression with a group elastic net penalty. Each gene's coefficients across all 11 classes form one group. The lasso part drops whole genes, and the ridge part spreads weight across correlated genes. The intercept isn't penalized.
 - **Class weights:** every cell is weighted by the inverse frequency of its class, so each class counts equally. This applies in the fits, in alpha_max and in the CV log-loss. **Without weights, the genes that only help rare classes are the first to be dropped:** in an unweighted run with 2,000 cells per class, LASP5 (209 cells in the whole atlas) lost its markers at about 30 genes, and its test F1 fell to 0.36.
-- **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data only (not centred, which keeps the matrix sparse).
+- **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data only (not centred, which keeps the matrix sparse). See "Gene scaling" below for the two ways to compute the variance.
 - **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` and `l1_ratio` (0.25, 0.5, 0.75, 1). For each `l1_ratio`, there are 20 alphas, evenly spaced on a linear scale from just below alpha_max (the smallest alpha that drops every gene) down to 0.01. So most of them are near the top, where models keep few genes. The aim is a model with few genes. Models are scored by held-out log-loss (class-weighted). The best pair is refitted on the whole training set and evaluated on the test set.
+
+### Gene scaling
+
+Tier 1 (`03`–`05`) divides each gene by its standard deviation on the training cells. There are two ways to compute it, set per run with the `HBCA_SCALING` environment variable:
+
+- `cells` (the default, and the original runs): every cell counts equally.
+- `balanced`: cells are weighted by inverse class frequency, as in the loss, so every class counts equally.
+
+**Why it matters:** in the full data, 57% of cells are "Other". With `cells` scaling, a gene expressed only in a small population has a tiny standard deviation, so it's scaled up a lot and becomes cheap for the lasso to keep. The full run's 40-gene model picked genes like that (ASPM, AURKB, OXTR, ROPN1), while the cap-20000 run picked broad markers. At cap 2000 with a 40-gene limit, `balanced` scaling gave a better network (test balanced accuracy 0.863 vs 0.847).
+
+```
+export HBCA_SCALING=balanced
+a=$(sbatch --parsable slurm/Run_03.sh 2000)
+...
+```
+
+`sbatch` passes the variable on to the job. A `balanced` run gets its own folders: `reed_level2_classifier[_cap<N>]_balanced/` and `figures/<step>/[cap<N>_]balanced/`. **Set it the same way for every step of a run (`03`–`08`), and leave it unset for `09`–`11`,** which read the `cells` runs. Each step's log prints the scaling it used. The setting is `GENE_SCALING` in `hbca_classifier/settings.py`.
 
 ### 03_prep.py
 

@@ -43,7 +43,7 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
 from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       one_hot, mean_log_loss, set_threads,
-                                      get_class_weights, get_sample_weights)
+                                      get_class_weights, get_sample_weights, get_scaling_weights, GENE_SCALING)
 from hbca_classifier.group_enet import MultinomialGroupEnet, predict_proba
 
 warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in beta.*')
@@ -58,7 +58,7 @@ threads = set_threads()
 max_genes = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ('', 'none') else None
 suffix = '' if max_genes is None else f'_max{max_genes}genes'     # added to every output file name
 print(f"Max cells per class: {max_cells_per_class}, "
-      f"max genes: {max_genes}, {threads} threads\n")
+      f"max genes: {max_genes}, gene scaling: {GENE_SCALING}, {threads} threads\n")
 
 # ---------------------- Collect the CV results
 cv_files = [os.path.join(clf_dir, 'cv', f'fold{k}_l1ratio{l1r}.csv') for k in range(N_FOLDS) for l1r in L1_RATIOS]
@@ -112,9 +112,9 @@ fig.savefig(os.path.join(figure_outdir_cur, f'cv_curves{suffix}.png'), dpi=200)
 X, prep = load_prepared(clf_dir)
 genes, y = prep['genes'], prep['y']
 idx_train, idx_test = prep['idx_train'], prep['idx_test']
-scaler = StandardScaler(with_mean=False).fit(X[idx_train])
-X_train, X_test = scaler.transform(X[idx_train]), scaler.transform(X[idx_test])
 y_train, y_test = y[idx_train], y[idx_test]
+scaler = StandardScaler(with_mean=False).fit(X[idx_train], sample_weight=get_scaling_weights(y_train))
+X_train, X_test = scaler.transform(X[idx_train]), scaler.transform(X[idx_test])
 del X
 
 class_weights = get_class_weights(y_train)     # inverse class frequency, as in 04
