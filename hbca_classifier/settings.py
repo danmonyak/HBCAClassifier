@@ -8,7 +8,7 @@
 #   max_cells_per_class:  default none (every cell). Caps the cells per class before the split, for a
 #                         quicker run. Each cap gets its own output folder, so capped runs never
 #                         overwrite the full one. Pass 'none' for no cap when a later argument follows.
-# 05 to 08 also take a second, max_genes (see 05_fit.py); 09 and 10 take none.
+# 05 to 08 also take a second, max_genes (see 05_fit.py); 09 and 10 take none; 11 takes two thresholds.
 
 import os
 import sys
@@ -82,6 +82,13 @@ UMAP_OTHER_SAMPLE = 100000   # "Other" cells to include (a random sample); every
 TRANSPLANT_SOURCE_CAP = 20000
 TRANSPLANT_SOURCE_MAX_GENES = 40
 TRANSPLANT_GAMMAS = [0, 0.25, 0.5, 0.75, 1]
+
+# Decision rules for the TRANSPLANT networks (11)
+# Post-hoc reweighting: probabilities x (1/class frequency)^gamma_post, then the top class.
+# Negative values undo a weighted network's class weights.
+POSTHOC_GAMMAS = [round(g, 3) for g in np.arange(-1, 1.5001, 0.125)]
+# Threshold pairs (Other threshold x state threshold) scored on validation
+THRESHOLD_GRID = [round(t, 2) for t in np.arange(0.5, 0.9501, 0.05)]
 
 # ---------------------- Helpers
 def get_args():

@@ -14,8 +14,8 @@ Run everything from the repo root, because figures, logs and `data/` are relativ
 
 | Folder | What |
 | --- | --- |
-| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `10_transplant_summary.py`. |
-| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_10.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
+| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `11_transplant_thresholds.py`. |
+| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_11.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
 | `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py` and `tier2_models.py` (see "Other files"). |
 | `dev/` | Code the steps don't use: `multinomial_group_lasso.py`, the skglm version of the model, kept to cross-check the PyTorch solver. |
 | `logs/` | SLURM stdout and stderr. |
@@ -79,9 +79,9 @@ What it does:
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
-## The level2 classifier: 03 to 10
+## The level2 classifier: 03 to 11
 
-Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Run `03`–`05` in order, from the repo root:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes, and `11` tries other decision rules on the TRANSPLANT networks. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Run `03`–`05` in order, from the repo root:
 
 ```
 a=$(sbatch --parsable slurm/Run_03.sh [cap])
@@ -229,6 +229,33 @@ What it does:
 
 The network training and KNN votes come from `hbca_classifier/tier2_models.py`, which copies the code of `06` and `07` as functions (`06` and `07` keep their own copies). `slurm/Run_09.sh`: 16 CPUs, 32G per task. `slurm/Run_10.sh`: 4 CPUs, 16G.
 
+### 11_transplant_thresholds.py
+
+Other ways to turn the TRANSPLANT networks' probabilities into calls. There's one network per trained gamma (0, 0.25, 0.5, 0.75, 1), and nothing is retrained: `11` reloads the networks `09` saved and recomputes their probabilities on `09`'s validation and test cells. Run it after `09`:
+
+```
+sbatch slurm/Run_11.sh [other_threshold] [state_threshold]    # defaults 0.6 and 0.8
+```
+
+- **Needs:** from `09`, in `<STORAGE_DIR>/reed_level2_transplant/`: `nn_gamma<g>.pt` and `gamma<g>.npz` for every gamma, and `test_cells.csv.gz`. Also `09`'s own inputs (the full-data `X.npz` and `prep.npz`, and the source run's `prep.npz` and `model_max<G>genes.npz`), to rebuild its cells.
+- **Produces:** in `<STORAGE_DIR>/reed_level2_transplant/thresholds/`:
+  - `posthoc_validation.csv`: validation balanced accuracy, macro F1 and accuracy for every trained gamma x `gamma_post`.
+  - `posthoc_test.csv`: for each trained gamma, test scores with the plain top class and with its best `gamma_post`.
+  - `threshold_report_other<a>_state<b>.csv`: for each trained gamma, split and class: true cells, cells called that class, correct calls, precision, recall and the fraction left unclassified.
+  - `threshold_summary_other<a>_state<b>.csv`: for each trained gamma and split: cells unclassified, accuracy of the classified cells, macro precision and macro recall.
+  - `threshold_grid.csv`: validation macro precision, macro recall and fraction unclassified for every trained gamma x threshold pair.
+  - In `figures/11/`: `posthoc_reweighting.png`, `threshold_grid_gamma<g>.png`, and `threshold_confusion_gamma<g>_other<a>_state<b>.png` (test set, with an "Unclassified" column).
+
+What it does:
+
+- **Check:** it stops if its recomputed test probabilities or validation balanced accuracy differ from what `09` saved.
+- **Part A, post-hoc reweighting:** this asks whether training with class weights helps the network learn the rare states, or only shifts its decision rule. Each network's probabilities are multiplied by (1 / class frequency)^`gamma_post`, using the training set's frequencies, and the top class is the call. Negative `gamma_post` values undo a weighted network's weights. `gamma_post` is chosen per network by validation balanced accuracy, and the test set is scored once. **If the unweighted network (trained gamma 0) plus its best `gamma_post` does as well as the weighted networks, the weights only shift the decision rule.** An unweighted network's probabilities match the real class mix, so they're the ones to threshold.
+- **Part B, thresholds:** a cell is called "Other" if P(Other) is at least the Other threshold, or one of the 10 states if that state's probability is at least the state threshold. If several classes pass, the most probable one wins. Otherwise the cell is "Unclassified". **With the defaults (0.6 and 0.8) no cell can pass two thresholds,** because the probabilities sum to 1. That can only happen when two thresholds sum to 1 or less.
+- **Scores:** precision is correct calls ÷ cells called that class. Recall is correct calls ÷ all true cells of that class, so unclassified cells count as misses. Macro recall is then balanced accuracy with unclassified cells counted as wrong.
+- **Threshold grid:** every pair from `THRESHOLD_GRID` (0.5 to 0.95), on validation only. **It's exploratory: choose thresholds from the grid, not from the test results,** or the test scores will look better than they are.
+
+The baseline and KNN aren't included, because `09` didn't save their validation scores. The settings (`POSTHOC_GAMMAS`, `THRESHOLD_GRID`) are in `hbca_classifier/settings.py`. `slurm/Run_11.sh`: 4 CPUs, 32G.
+
 ### The model code
 
 - `hbca_classifier/group_enet.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`). It takes optional per-cell weights (`sample_weight`). The weighted version was checked two ways: against scikit-learn's weighted ridge fit (probabilities within 1e-7), and against an unweighted fit on duplicated cells (within 1e-9).
@@ -255,5 +282,5 @@ PYTHONNOUSERSITE=1 python -m pip install torch skglm
 - `hbca_classifier/tier2_models.py`: the tier-2 network training and KNN votes as functions, used by `09`.
 - `local_paths.env.example`: template for `local_paths.env`.
 - `slurm/Run_01.sh`: SLURM script for `01_atlas_exploration.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment, because loading the atlas takes a lot of memory. `slurm/Run_02.sh` (for `02_marker_matrices.R`) has the same resources.
-- `slurm/Run_03.sh` to `slurm/Run_10.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
+- `slurm/Run_03.sh` to `slurm/Run_11.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
 - `logs/`: holds a `.gitkeep`, because SLURM fails a job whose log folder is missing.
