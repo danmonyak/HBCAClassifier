@@ -1,5 +1,7 @@
 # HBCAClassifier
 
+*Software for feature selection and classification of breast epithelial cell states with scRNA-seq data*
+
 [![DOI](https://zenodo.org/badge/1424663432.svg)](https://doi.org/10.5281/zenodo.23457813)
 
 Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.), and a classifier that predicts its epithelial cell states (LASP1–5, LHS1–3, BMYO1–2) from a small set of marker genes. The goal is a set of about 20–40 genes that works as a predictor.
