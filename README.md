@@ -103,20 +103,9 @@ The model:
 
 ### Gene scaling
 
-Tier 1 (`03`–`05`) divides each gene by its standard deviation on the training cells. There are two ways to compute it, set per run with the `HBCA_SCALING` environment variable:
+Tier 1 (`03`–`05`) divides each gene by its standard deviation on the training cells. **The cells are weighted by inverse class frequency, as in the loss, so every class counts equally** (`get_scaling_weights` in `hbca_classifier/settings.py`).
 
-- `cells` (the default, and the original runs): every cell counts equally.
-- `balanced`: cells are weighted by inverse class frequency, as in the loss, so every class counts equally.
-
-**Why it matters:** in the full data, 57% of cells are "Other". With `cells` scaling, a gene expressed only in a small population has a tiny standard deviation, so it's scaled up a lot and becomes cheap for the lasso to keep. The full run's 40-gene model picked genes like that (ASPM, AURKB, OXTR, ROPN1), while the cap-20000 run picked broad markers. At cap 2000 with a 40-gene limit, `balanced` scaling gave a better network (test balanced accuracy 0.863 vs 0.847). **On the full data with a 40-gene limit, it fixed the gene selection:** 38 broad marker genes (21 shared with the cap-20000 run), and a network test balanced accuracy of 0.867, against 0.750 with `cells` scaling (25 genes; same test cells) and 0.842 for the cap-20000 run. Its UMAP (`08`) shows clean LASP / LHS / BMYO / Other blocks. Part of the gain may come from the extra genes: the alpha grid has no point near 25 genes.
-
-```
-export HBCA_SCALING=balanced
-a=$(sbatch --parsable slurm/Run_03.sh 2000)
-...
-```
-
-`sbatch` passes the variable on to the job. A `balanced` run gets its own folders: `reed_level2_classifier[_cap<N>]_balanced/` and `figures/<step>/[cap<N>_]balanced/`. **Set it the same way for every step of a run (`03`–`08`), and leave it unset for `09`–`11`,** which read the `cells` runs. Each step's log prints the scaling it used. The setting is `GENE_SCALING` in `hbca_classifier/settings.py`.
+**Why:** in the full data, 57% of cells are "Other". If every cell counted equally, a gene expressed only in a small population would have a tiny standard deviation, so it would be scaled up a lot and become cheap for the lasso to keep. The first full-data run did that, and its 40-gene model picked genes like ASPM, AURKB, OXTR and ROPN1. With class-weighted scaling, the same run picked 38 broad marker genes, and its network's test balanced accuracy rose from 0.750 to 0.867 (both on a cell-level split; see "Earlier results"). Every-cell scaling was removed after that.
 
 ### 03_prep.py
 
@@ -292,6 +281,15 @@ PYTHONNOUSERSITE=1 python -m pip install torch skglm
 ```
 
 **Use `python -m pip`, not `pip`.** Otherwise the cluster's system `pip` may be found first, and it installs into `~/.local` instead of the environment.
+
+## Earlier results
+
+Every run up to 2026-10-19 split the data by cell: training and test cells could come from the same donor. **Their outputs were moved to `<STORAGE_DIR>/old_cell_split/` and `figures/old_cell_split/`,** and the scripts no longer read them. The main ones (test balanced accuracy, 40-gene limit):
+
+- Cap 20,000 cells per class: 25 genes, network 0.842.
+- Full data, every-cell gene scaling: 25 genes, network 0.750.
+- Full data, class-weighted gene scaling: 38 genes, network 0.867.
+- TRANSPLANT (`09`–`11`), on the cap-20,000 genes: network 0.843.
 
 ## Other files
 

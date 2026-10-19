@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 from hbca_classifier.settings import (OUTPUT_DIR, KEEP_STATES, CLASSES, TEST_SIZE, N_FOLDS, RANDOM_STATE,
                                       L1_RATIOS, N_ALPHAS, ALPHA_MIN,
                                       get_args, get_classifier_dir, get_figure_dir, one_hot,
-                                      get_class_weights, get_sample_weights, get_scaling_weights, GENE_SCALING)
+                                      get_class_weights, get_sample_weights, get_scaling_weights)
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -36,7 +36,7 @@ max_cells_per_class = get_args()
 data_dir = OUTPUT_DIR       # where 02 saved its files
 clf_dir = get_classifier_dir(max_cells_per_class)
 get_figure_dir(max_cells_per_class, '03')   # no figures yet; made like every step
-print(f"Max cells per class: {max_cells_per_class}, gene scaling: {GENE_SCALING}")
+print(f"Max cells per class: {max_cells_per_class}")
 print(f"Output folder: {clf_dir}\n")
 
 # ---------------------- Load the cell state marker matrix and the labels

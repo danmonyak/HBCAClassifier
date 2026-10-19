@@ -43,18 +43,10 @@ L1_RATIOS = [0.25, 0.5, 0.75, 1.0]
 N_ALPHAS = 20
 ALPHA_MIN = 0.01
 
-# Gene scaling for tier 1 (03-05): each gene is divided by its SD on the training cells.
-#   'cells':    every cell counts equally (the original runs)
-#   'balanced': cells are weighted by inverse class frequency, as in the loss, so every class counts
-#               equally. In the full data, 57% of cells are Other, so with 'cells' a gene expressed only
-#               in a small population gets a tiny SD, is scaled up a lot, and becomes cheap to keep.
-# Chosen per run with the HBCA_SCALING environment variable, e.g.
-#   HBCA_SCALING=balanced sbatch slurm/Run_03.sh 2000
-# A balanced run gets its own classifier and figure folders (_balanced), so it never overwrites a
-# 'cells' run. **Set it the same way for every step of a run (03-08), and leave it unset for 09-11.**
-GENE_SCALING = os.environ.get('HBCA_SCALING', 'cells')
-if GENE_SCALING not in ('cells', 'balanced'):
-    raise ValueError(f"HBCA_SCALING must be 'cells' or 'balanced', not {GENE_SCALING!r}")
+# Gene scaling for tier 1 (03-05): each gene is divided by its SD on the training cells, with the
+# cells weighted by inverse class frequency (as in the loss), so every class counts equally. With
+# every cell counting equally instead, a gene expressed only in a small population gets a tiny SD
+# in the full data (57% Other), is scaled up a lot, and becomes cheap for the lasso to keep.
 
 # Solver settings (FISTA in hbca_classifier/group_enet.py)
 TOL = 1e-6               # stop when the largest optimality violation is below this
@@ -112,19 +104,16 @@ def get_args():
 
 
 def get_classifier_dir(cap):
-    """Folder for a run's classifier files: <STORAGE_DIR>/reed_level2_classifier[_cap<N>][_balanced]/"""
-    name = 'reed_level2_classifier' + ('' if cap is None else f'_cap{cap}') \
-        + ('_balanced' if GENE_SCALING == 'balanced' else '')
+    """Folder for a run's classifier files: <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/"""
+    name = 'reed_level2_classifier' + ('' if cap is None else f'_cap{cap}')
     d = os.path.join(OUTPUT_DIR, name)
     os.makedirs(d, exist_ok=True)
     return d
 
 
 def get_figure_dir(cap, step):
-    """figures/<step>/, or figures/<step>/cap<N>/ for a capped run; with balanced gene scaling,
-    figures/<step>/balanced/ or figures/<step>/cap<N>_balanced/."""
-    sub = ('' if cap is None else f'cap{cap}') + ('_balanced' if GENE_SCALING == 'balanced' else '')
-    d = os.path.join('figures', step, *([sub.lstrip('_')] if sub else []))
+    """figures/<step>/, or figures/<step>/cap<N>/ for a capped run."""
+    d = os.path.join('figures', step, *([] if cap is None else [f'cap{cap}']))
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -157,9 +146,9 @@ def get_sample_weights(y, class_weights):
 
 
 def get_scaling_weights(y):
-    """Cell weights for the gene scaler: None for 'cells' scaling (every cell equal), or each cell's
-    inverse-class-frequency weight for 'balanced' scaling."""
-    return None if GENE_SCALING == 'cells' else get_sample_weights(y, get_class_weights(y))
+    """Cell weights for the gene scaler: each cell's inverse-class-frequency weight, so every class
+    counts equally in each gene's SD."""
+    return get_sample_weights(y, get_class_weights(y))
 
 
 def score_text(y_true, pred):
