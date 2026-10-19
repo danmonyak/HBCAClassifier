@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "HBCAClassifier: feature selection and classification of breast epithelial cell states with scRNA-seq data"
+authors:
+  - family-names: Monyak
+    given-names: Daniel L.
+doi: 10.5281/zenodo.23457813
+repository-code: "https://github.com/danmonyak/HBCAClassifier"
+license: MIT

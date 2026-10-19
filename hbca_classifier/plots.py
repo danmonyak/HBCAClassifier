@@ -46,6 +46,9 @@ def load_predictions(path):
     for k in ('label', 'step', 'name', 'suffix'):
         d[k] = str(d[k])
     d['pred'] = CLASSES[d['P'].argmax(axis=1)]
+    if 'donors' not in d:   # saved before predictions held donors: look them up in the run's prep.npz
+        with np.load(os.path.join(os.path.dirname(path), 'prep.npz')) as f:
+            d['donors'] = pd.Series(f['donors'], index=f['cells']).loc[d['cells']].to_numpy()
     return d
 
 
@@ -56,7 +59,7 @@ def confusion_matrix_figure(y_true, pred, donors, label, path_stem):
         .reindex(index=CLASSES, columns=CLASSES, fill_value=0)
     annot = cm.round().astype(int).astype(str).where(cm >= 0.5, '')
     bacc = balanced_accuracy_score(y_true, pred)
-    test = f"{len(np.unique(donors))} held-out donors, " if donors is not None else ''
+    test = f"{len(np.unique(donors))} held-out donors, "
     fig, ax = plt.subplots(figsize=(8.5, 7.2))
     sns.heatmap(cm, annot=annot, fmt='', cmap='Blues', vmin=0, vmax=100, linewidths=0.5, linecolor='white',
                 annot_kws={'size': 10}, cbar_kws={'label': '% of true state'}, ax=ax)
@@ -96,12 +99,9 @@ def cv_curves(cv_summary, best_l1_ratio, best_alpha, max_genes, path):
     plt.close(fig)
 
 
-def draw_model_figures(pred_path, fig_dir, donors=None):
-    """Draw a model's test confusion matrix from its predictions file into fig_dir; returns the path stem.
-    donors: the test cells' donors, for files saved before predictions held them."""
+def draw_model_figures(pred_path, fig_dir):
+    """Draw a model's test confusion matrix from its predictions file into fig_dir; returns the path stem."""
     d = load_predictions(pred_path)
-    if 'donors' in d:
-        donors = d['donors']
     stem = os.path.join(fig_dir, f"{d['name']}test_confusion_matrix{d['suffix']}")
-    confusion_matrix_figure(d['y_true'], d['pred'], donors, d['label'], stem)
+    confusion_matrix_figure(d['y_true'], d['pred'], d['donors'], d['label'], stem)
     return stem

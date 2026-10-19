@@ -18,3 +18,7 @@ data/*.xlsx
 
 __pycache__
 .vscode
+
+# results/ holds the headline results, tracked on purpose (see scripts/export_results.py)
+!results/*.csv
+!results/*.pdf

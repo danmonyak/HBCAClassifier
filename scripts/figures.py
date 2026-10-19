@@ -5,8 +5,8 @@
 # Use it after changing a figure in hbca_classifier/plots.py, or to restyle it. The fitting steps
 # (05, 06, 07) draw the same figures when they run.
 #
-# Needs:    test_predictions_<model><suffix>.npz files (from 05, 06, 07), and prep.npz (from 03, for the
-#           test cells' donors in files saved before predictions held them), in
+# Needs:    test_predictions_<model><suffix>.npz files (from 05, 06, 07), cv_summary.csv and
+#           model[_max<G>genes].npz (05), and prep.npz (03, for the donors of older predictions files), in
 #           <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/
 # Produces: for each predictions file, its test confusion matrix (.png and .pdf), in the step's folder
 #           figures/<step>[/cap<N>]/; for each tier-1 model, figures/05[/cap<N>]/cv_curves[_max<G>genes].png
@@ -28,12 +28,9 @@ clf_dir = get_classifier_dir(max_cells_per_class)
 files = sorted(glob.glob(os.path.join(clf_dir, 'test_predictions_*.npz')))
 if not files:
     raise FileNotFoundError(f"no test_predictions_*.npz in {clf_dir}: run 05, 06 or 07 first")
-with np.load(os.path.join(clf_dir, 'prep.npz')) as f:
-    donor_of = pd.Series(f['donors'], index=f['cells'])
 for path in files:
     d = load_predictions(path)
-    stem = draw_model_figures(path, get_figure_dir(max_cells_per_class, d['step']),
-                              donors=donor_of.loc[d['cells']].to_numpy())
+    stem = draw_model_figures(path, get_figure_dir(max_cells_per_class, d['step']))
     print(f"{os.path.basename(path)} -> {stem}.png, .pdf")
 
 # Tier-1 CV curves, one per fitted tier-1 model (model.npz, model_max<G>genes.npz)

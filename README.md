@@ -8,16 +8,57 @@ Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.), and a classifier
 
 This started as the `RNAseq_SingleCell/Reed_Explore` folder of `tamoxifen-scRNA-seq`, where the HBCA is the reference for level-2 label transfer (`Cell_Type_Assignment/02_SingleR_Reed_transfer.R`). It moved here with its git history. **The copy in `tamoxifen-scRNA-seq` is no longer updated:** it still uses that repo's config and the `90` run name, and its outputs are in that repo's `storage/90/`.
 
+## Results
+
+From the 2,968 cell state marker genes, the tier-1 model (a multinomial group elastic net) selects **35 genes**. A neural network that predicts the cell state from only those genes reaches a **balanced accuracy of 0.861 on 16 held-out donors** (268,686 cells it never saw, from donors not used in training or gene selection). Balanced accuracy is the mean over the 11 classes of the percentage of each class's cells predicted correctly, so the rare states count as much as the common ones.
+
+![Confusion matrix of the network on the held-out donors](results/confusion_matrix_network.png)
+
+*Test-set confusion matrix of the neural network on the 35 selected genes. Each row is a true cell state (level 2 of the HBCA, with every non-epithelial state as "Other") and shows the percentage of its cells predicted as each state; rows sum to 100%. The diagonal is each state's recall, and their mean is the balanced accuracy (0.861). Values under 0.5% are blank. A PDF version is in `results/`.*
+
+| Model (test set: 16 held-out donors) | Balanced accuracy |
+| --- | ---: |
+| Neural network (tier 2) | 0.861 |
+| Logistic regression (tier 2 baseline) | 0.856 |
+| Weighted KNN (tier 2) | 0.839 |
+| Group elastic net (tier 1, the gene selector itself) | 0.795 |
+
+The 35 genes, by importance: KRT14, AZGP1, SERPINA1, UBE2C, ANKRD30A, UBB, CRYAB, KRT15, KRT17, WFDC2, ALDH1A3, SLPI, DST, CENPF, TPT1-AS1, PIGR, SAA1, SFRP1, SLC34A2, PCLAF, CCL28, SERPINE1, RARRES1, CDK1, SERPINA3, ANXA1, TMEM45B, DNAJC12, HSP90AA1, PDZK1IP1, SMS, SLC25A37, DKK3, NUSAP1, RPS19.
+
+`results/` holds these files: `confusion_matrix_network.png` and `.pdf`, `genes.csv`, `summary.csv` and `test_donors.csv`. They come from the full-data run with a 40-gene limit. To reproduce them (after `02`, from the repo root):
+
+```
+a=$(sbatch --parsable slurm/Run_03.sh)
+b=$(sbatch --parsable --dependency=afterok:$a --kill-on-invalid-dep=yes slurm/Run_04.sh)
+c=$(sbatch --parsable --dependency=afterok:$b --kill-on-invalid-dep=yes slurm/Run_05.sh none 40)
+d=$(sbatch --parsable --dependency=afterok:$c --kill-on-invalid-dep=yes slurm/Run_06.sh none 40)
+e=$(sbatch --parsable --dependency=afterok:$d --kill-on-invalid-dep=yes slurm/Run_07.sh none 40)
+sbatch --dependency=afterok:$e --kill-on-invalid-dep=yes slurm/Run_export.sh
+```
+
+Every split, random draw and network is seeded. `scripts/export_results.py` (`slurm/Run_export.sh`, default arguments `none 40`) writes `results/` from a finished run.
+
+## How to cite
+
+Please cite this repository with its Zenodo DOI, [10.5281/zenodo.23457813](https://doi.org/10.5281/zenodo.23457813) (`CITATION.cff` has the details, and GitHub's "Cite this repository" button uses it):
+
+> Monyak, D. L. *HBCAClassifier: feature selection and classification of breast epithelial cell states with scRNA-seq data.* Zenodo. https://doi.org/10.5281/zenodo.23457813
+
+The data are from the Human Breast Cell Atlas: Reed, A. D. et al. A single-cell atlas enables mapping of homeostatic cellular shifts in the adult human breast. *Nature Genetics* 56, 652–662 (2024).
+
+The code is under the MIT License (`LICENSE.txt`).
+
 Run everything from the repo root, because figures, logs and `data/` are relative paths.
 
 ## Layout
 
 | Folder | What |
 | --- | --- |
-| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `08_umap.py`; and `figures.py`, which redraws a run's test figures. |
-| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_08.sh`, and `Run_figures.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
+| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `08_umap.py`; `figures.py`, which redraws a run's figures; and `export_results.py`, which writes `results/`. |
+| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_08.sh`, `Run_figures.sh` and `Run_export.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
 | `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py` and `plots.py` (see "Other files"). |
 | `dev/` | Code the steps don't use: `multinomial_group_lasso.py`, the skglm version of the model, kept to cross-check the PyTorch solver; and `transplant/`, the retired steps `09`–`11` (see its README). |
+| `results/` | The headline results, tracked in git (see "Results"). |
 | `logs/` | SLURM stdout and stderr. |
 | `data/` | The marker gene workbook (not in git). |
 | `figures/` | Figures, in `figures/<step>[/cap<N>]/` (not in git). |
@@ -270,6 +311,7 @@ Every run up to 2026-10-19 split the data by cell: training and test cells could
 - `hbca_classifier/group_enet.py`: the tier-1 model's solver (see "The model code").
 - `hbca_classifier/plots.py`: saves and loads test predictions, and draws the test confusion matrix (see "Test figures").
 - `local_paths.env.example`: template for `local_paths.env`.
+- `CITATION.cff`: how to cite this repository (see "How to cite"). `LICENSE.txt`: the MIT License.
 - `slurm/Run_01.sh`: SLURM script for `01_atlas_exploration.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment, because loading the atlas takes a lot of memory. `slurm/Run_02.sh` (for `02_marker_matrices.R`) has the same resources.
 - `slurm/Run_03.sh` to `slurm/Run_08.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
 - `logs/`: holds a `.gitkeep`, because SLURM fails a job whose log folder is missing.

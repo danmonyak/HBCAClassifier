@@ -1,0 +1,5 @@
+model,balanced_accuracy,test_donors,test_cells,genes
+Neural network (tier 2),0.8614,16,268686,35
+Logistic regression (tier 2 baseline),0.8559,16,268686,35
+Weighted KNN (tier 2),0.8388,16,268686,35
+Group elastic net (tier 1),0.7952,16,268686,35
