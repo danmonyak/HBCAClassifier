@@ -14,10 +14,10 @@ Run everything from the repo root, because figures, logs and `data/` are relativ
 
 | Folder | What |
 | --- | --- |
-| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `11_transplant_thresholds.py`; and `figures.py`, which redraws a run's test figures. |
-| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_11.sh`, and `Run_figures.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
-| `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py`, `tier2_models.py` and `plots.py` (see "Other files"). |
-| `dev/` | Code the steps don't use: `multinomial_group_lasso.py`, the skglm version of the model, kept to cross-check the PyTorch solver. |
+| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `08_umap.py`; and `figures.py`, which redraws a run's test figures. |
+| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_08.sh`, and `Run_figures.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
+| `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py` and `plots.py` (see "Other files"). |
+| `dev/` | Code the steps don't use: `multinomial_group_lasso.py`, the skglm version of the model, kept to cross-check the PyTorch solver; and `transplant/`, the retired steps `09`–`11` (see its README). |
 | `logs/` | SLURM stdout and stderr. |
 | `data/` | The marker gene workbook (not in git). |
 | `figures/` | Figures, in `figures/<step>[/cap<N>]/` (not in git). |
@@ -30,7 +30,7 @@ The Python steps import `hbca_classifier`, so the repo root must be on `PYTHONPA
 2. **Marker gene workbook:** put `HBCA_Reed_Top_Marker_Genes.xlsx` in `data/`. **It's kept out of git on purpose** (`data/*.xlsx` is gitignored).
 3. **Conda environments:**
    - `renv` (R 4.5) for `01` and `02`: SingleCellExperiment, anndataR, readxl, dplyr, tibble, Matrix, ggplot2, tidySingleCellExperiment, patchwork, scuttle and scater.
-   - `torch` for `03`–`07`, `09` and `10` (see "The torch environment" below).
+   - `torch` for `03`–`07` (see "The torch environment" below).
    - The base conda environment for `08`, because it has umap-learn.
 
 Every script reads and writes its data objects directly in `STORAGE_DIR`. There's no run-name level, unlike `tamoxifen-scRNA-seq`'s `storage/<run>/`.
@@ -79,9 +79,9 @@ What it does:
 - Reads the two sheets of the marker workbook, `celltype` and `state`. Each sheet has one column per cell type or state, with up to 100 marker gene symbols ranked from row 1. They become two named lists, `celltype.markers` and `state.markers` (cell type or state -> its genes, in rank order).
 - Keeps the atlas genes whose symbol (`rowData(reed)$feature_name`) is one of the markers, and uses the symbols as the matrices' row names. The log lists the markers that aren't in the atlas. Checked against the files: 856 of 900 cell type markers and 2,968 of 3,155 cell state markers are in the atlas. Most of the missing ones are clone-based names like `AC093001.1`.
 
-## The level2 classifier: 03 to 11
+## The level2 classifier: 03 to 08
 
-Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes, and `11` tries other decision rules on the TRANSPLANT networks. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Every figure of one model's test results has its test balanced accuracy and macro F1 in the title (`score_text` in `hbca_classifier/settings.py`). Cells left unclassified in `11` count as misses. **`05`, `06` and `07` save each model's test predictions, and draw its test figures from them,** so the figures can be redrawn without refitting (see "Test figures" below). Run `03`–`05` in order, from the repo root:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Every figure of one model's test results has its test balanced accuracy and macro F1 in the title (`score_text` in `hbca_classifier/settings.py`). **`05`, `06` and `07` save each model's test predictions, and draw its test figures from them,** so the figures can be redrawn without refitting (see "Test figures" below). Run `03`–`05` in order, from the repo root:
 
 ```
 a=$(sbatch --parsable slurm/Run_03.sh [cap])
@@ -223,60 +223,6 @@ sbatch slurm/Run_08.sh 20000 40
 
 Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they differ only in their genes. Genes are centred and scaled to unit variance over the plotted cells. **UMAP itself isn't seeded,** so it runs on all the job's cores, and its layout differs slightly each time it's run. **It runs in the base conda environment**, because the `torch` environment doesn't have umap-learn. The UMAP settings (`UMAP_N_NEIGHBORS`, `UMAP_MIN_DIST`, `UMAP_OTHER_SAMPLE`) are in `hbca_classifier/settings.py`. `slurm/Run_08.sh`: 8 CPUs, 64G.
 
-### TRANSPLANT: 09_transplant.py and 10_transplant_summary.py
-
-**`09`–`11` were built on the cell-level split and haven't been rerun since the split moved to donors.** Their inputs and outputs are in `<STORAGE_DIR>/old_cell_split/`. The class-weighted gene scaling made them unnecessary: the full-data run now picks good genes by itself.
-
-Retrains the tier-2 models on the full data, on the genes that a capped run's tier-1 model chose. By default these are the 25 genes from the 20,000-per-class run with a 40-gene limit (`TRANSPLANT_SOURCE_CAP`, `TRANSPLANT_SOURCE_MAX_GENES`). The reason: on the full data, tier 1 chose a worse gene set (test balanced accuracy about 0.75 against 0.84). A likely cause is that inverse-frequency class weights become extreme there, about 2,200:1. The UMAPs (`08`) show the same thing.
-
-```
-a=$(sbatch --parsable slurm/Run_09.sh)
-sbatch --dependency=afterok:$a --kill-on-invalid-dep=yes slurm/Run_10.sh
-```
-
-- **Needs:** `X.npz` and `prep.npz` from `03` on the full data, and `prep.npz` and `model_max<G>genes.npz` from the source run.
-- **Produces:** in `<STORAGE_DIR>/reed_level2_transplant/`:
-  - From `09`: `gamma<g>.npz` per network/baseline task (validation scores and test probabilities), `nn_gamma<g>.pt`, `nn_training_curve_gamma<g>.csv`, `knn.npz`, `knn_tuning.csv` and `test_cells.csv.gz`.
-  - From `10`: `gamma_tuning.csv`, `transplant_comparison.csv` (test log-loss, accuracy, balanced accuracy and macro F1 for the three chosen models), and `nn_test_report.csv`, `baseline_test_report.csv` and `knn_test_report.csv`. In `figures/10/`: `gamma_tuning.png` and a test confusion matrix per model.
-
-What it does:
-
-- **Cells:** the full run's training set minus a stratified 10% validation part (as in `06`), for training and tuning. **The test set is the full run's test set minus every cell in the source run's training set,** because the source run's tier-1 model chose the genes using those cells.
-- **Tempered class weights:** each class is weighted by (1 / its frequency)^gamma, with gamma in `TRANSPLANT_GAMMAS` (0, 0.25, 0.5, 0.75, 1). `slurm/Run_09.sh` is an array with one task per gamma, each training the network and the unpenalized logistic regression, plus one task for KNN, which tunes its own k, gamma and beta as in `07`. **If you change `TRANSPLANT_GAMMAS`, change the `--array` line to match.**
-- **Choosing:** `10` picks each model's gamma by validation balanced accuracy, then scores the test set once.
-
-The network training and KNN votes come from `hbca_classifier/tier2_models.py`, which copies the code of `06` and `07` as functions (`06` and `07` keep their own copies). `slurm/Run_09.sh`: 16 CPUs, 32G per task. `slurm/Run_10.sh`: 4 CPUs, 16G.
-
-### 11_transplant_thresholds.py
-
-Other ways to turn the TRANSPLANT networks' probabilities into calls. **The unweighted network (trained gamma 0) is the tier-2 model;** the others are kept for comparison. There's one network per trained gamma (0, 0.25, 0.5, 0.75, 1), and nothing is retrained: `11` reloads the networks `09` saved and recomputes their probabilities on `09`'s validation and test cells. Run it after `09`:
-
-```
-sbatch slurm/Run_11.sh [other_threshold] [state_threshold]    # defaults 0.6 and 0.8
-```
-
-- **Needs:** from `09`, in `<STORAGE_DIR>/reed_level2_transplant/`: `nn_gamma<g>.pt` and `gamma<g>.npz` for every gamma, and `test_cells.csv.gz`. Also `09`'s own inputs (the full-data `X.npz` and `prep.npz`, and the source run's `prep.npz` and `model_max<G>genes.npz`), to rebuild its cells.
-- **Produces:** in `<STORAGE_DIR>/reed_level2_transplant/thresholds/`:
-  - `posthoc_validation.csv`: validation balanced accuracy, macro F1 and accuracy for every trained gamma x `gamma_post`.
-  - `posthoc_test.csv`: for each trained gamma, test scores with the plain top class and with its best `gamma_post`.
-  - `threshold_report_other<a>_state<b>.csv`: for each trained gamma, split and class: true cells, cells called that class, correct calls, precision, recall and the fraction left unclassified.
-  - `threshold_summary_other<a>_state<b>.csv`: for each trained gamma and split: cells unclassified, accuracy of the classified cells, macro precision and macro recall.
-  - `family_report_other<a>_state<b>.csv`: for each trained gamma, split and true class: the fraction called that state, called its family, called something wrong, or left unclassified.
-  - `family_summary_other<a>_state<b>.csv`: for each trained gamma and split: the fraction unclassified (all cells and epithelial cells), the fraction of epithelial cells called at state and at family level, the accuracy of the calls, and each family call's count and precision.
-  - `threshold_grid.csv`: validation macro precision, macro recall and fraction unclassified for every trained gamma x threshold pair.
-  - In `figures/11/`: `posthoc_reweighting.png`, `threshold_grid_gamma<g>.png`, `threshold_confusion_gamma<g>_other<a>_state<b>.png` (test set, with an "Unclassified" column) and `family_confusion_gamma<g>_other<a>_state<b>.png` (the same, with LASP, LHS and BMYO columns).
-
-What it does:
-
-- **Check:** it stops if its recomputed test probabilities or validation balanced accuracy differ from what `09` saved.
-- **Part A, post-hoc reweighting:** this asks whether training with class weights helps the network learn the rare states, or only shifts its decision rule. Each network's probabilities are multiplied by (1 / class frequency)^`gamma_post`, using the training set's frequencies, and the top class is the call. Negative `gamma_post` values undo a weighted network's weights. `gamma_post` is chosen per network by validation balanced accuracy, and the test set is scored once. **If the unweighted network (trained gamma 0) plus its best `gamma_post` does as well as the weighted networks, the weights only shift the decision rule.** An unweighted network's probabilities match the real class mix, so they're the ones to threshold.
-- **Part B, thresholds:** a cell is called "Other" if P(Other) is at least the Other threshold, or one of the 10 states if that state's probability is at least the state threshold. If several classes pass, the most probable one wins. Otherwise the cell is "Unclassified". **With the defaults (0.6 and 0.8) no cell can pass two thresholds,** because the probabilities sum to 1. That can only happen when two thresholds sum to 1 or less.
-- **Scores:** precision is correct calls ÷ cells called that class. Recall is correct calls ÷ all true cells of that class, so unclassified cells count as misses. Macro recall is then balanced accuracy with unclassified cells counted as wrong.
-- **Part C, family fallback:** as Part B, but a cell left unclassified is called LASP, LHS or BMYO if that family's summed probability (e.g. LASP1 + … + LASP5) is at least the state threshold. A family call counts as right if the cell's true state is in that family. The families are `FAMILIES` in `hbca_classifier/settings.py`.
-- **Threshold grid:** every pair from `THRESHOLD_GRID` (0.5 to 0.95), on validation only. **It's exploratory: choose thresholds from the grid, not from the test results,** or the test scores will look better than they are.
-
-The baseline and KNN aren't included, because `09` didn't save their validation scores. The settings (`POSTHOC_GAMMAS`, `THRESHOLD_GRID`) are in `hbca_classifier/settings.py`. `slurm/Run_11.sh`: 4 CPUs, 32G.
-
 ### Test figures: figures.py
 
 Each model's test figures are drawn only from its saved predictions, by `hbca_classifier/plots.py`. There are three per model:
@@ -318,17 +264,16 @@ Every run up to 2026-10-19 split the data by cell: training and test cells could
 - Cap 20,000 cells per class: 25 genes, network 0.842.
 - Full data, every-cell gene scaling: 25 genes, network 0.750.
 - Full data, class-weighted gene scaling: 38 genes, network 0.867.
-- TRANSPLANT (`09`–`11`), on the cap-20,000 genes: network 0.843.
+- TRANSPLANT (retired steps `09`–`11`, now in `dev/transplant/`), on the cap-20,000 genes: network 0.843.
 
 ## Other files
 
 - `config.R`: settings for the R scripts (`figure_outdir`, `data_dir`, `OUTPUT_DIR` and `get_local_path()` from `local_paths.env`, `catObj()`, point sizes, `rng.seed`). It stays in the repo root, because the R scripts source it from there.
 - `hbca_classifier/config.py`: the same paths for the Python scripts (`OUTPUT_DIR`, `get_local_path()`).
-- `hbca_classifier/settings.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance, network, KNN, UMAP and TRANSPLANT settings) and shared helpers.
+- `hbca_classifier/settings.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance, network, KNN and UMAP settings) and shared helpers.
 - `hbca_classifier/group_enet.py`: the tier-1 model's solver (see "The model code").
-- `hbca_classifier/tier2_models.py`: the tier-2 network training and KNN votes as functions, used by `09`.
 - `hbca_classifier/plots.py`: saves and loads test predictions, and draws the test figures (see "Test figures").
 - `local_paths.env.example`: template for `local_paths.env`.
 - `slurm/Run_01.sh`: SLURM script for `01_atlas_exploration.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment, because loading the atlas takes a lot of memory. `slurm/Run_02.sh` (for `02_marker_matrices.R`) has the same resources.
-- `slurm/Run_03.sh` to `slurm/Run_11.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
+- `slurm/Run_03.sh` to `slurm/Run_08.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
 - `logs/`: holds a `.gitkeep`, because SLURM fails a job whose log folder is missing.
