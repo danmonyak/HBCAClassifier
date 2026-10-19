@@ -1,8 +1,8 @@
 # 07_knn.py
 #
 # A second tier-2 model: weighted k-nearest neighbours on the genes the tier-1 model (05) selected.
-# It uses the same cells as 06: the training set from 03 minus the same stratified validation
-# part, which is the reference, and the validation part, on which k and the class weighting are
+# It uses the same cells as 06: the training set from 03 minus the same validation donors, which
+# is the reference, and the validation donors' cells, on which k and the class weighting are
 # tuned. The test set is used once, at the end.
 #
 # Each neighbour votes for its class with weight 1 / distance times (1 / frequency of its class
@@ -41,11 +41,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from hbca_classifier.settings import (score_text, CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
+from hbca_classifier.settings import (score_text, donor_split, describe_split, CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared, set_threads)
 
 t_start = time.time()
@@ -74,8 +73,11 @@ X, prep = load_prepared(clf_dir)
 X = X[:, np.flatnonzero(selected)].toarray()
 y = prep['y']
 idx_test = prep['idx_test']
-idx_ref, idx_val = train_test_split(prep['idx_train'], test_size=NN_VAL_SIZE,
-                                    stratify=y[prep['idx_train']], random_state=RANDOM_STATE)
+# Validation: the cells of about NN_VAL_SIZE of the training donors (the same ones as in 06)
+idx_train = prep['idx_train']
+is_val, _ = donor_split(prep['donors'][idx_train], y[idx_train], NN_VAL_SIZE)
+idx_ref, idx_val = idx_train[~is_val], idx_train[is_val]
+describe_split(y[idx_train], is_val, prep['donors'][idx_train], 'Validation')
 X_ref_raw, X_val_raw, X_test_raw = X[idx_ref], X[idx_val], X[idx_test]
 y_ref, y_val, y_test = y[idx_ref], y[idx_val], y[idx_test]
 del X

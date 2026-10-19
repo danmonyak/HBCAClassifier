@@ -99,7 +99,7 @@ The model:
 - **Model:** multinomial logistic regression with a group elastic net penalty. Each gene's coefficients across all 11 classes form one group. The lasso part drops whole genes, and the ridge part spreads weight across correlated genes. The intercept isn't penalized.
 - **Class weights:** every cell is weighted by the inverse frequency of its class, so each class counts equally. This applies in the fits, in alpha_max and in the CV log-loss. **Without weights, the genes that only help rare classes are the first to be dropped:** in an unweighted run with 2,000 cells per class, LASP5 (209 cells in the whole atlas) lost its markers at about 30 genes, and its test F1 fell to 0.36.
 - **Features:** the marker genes' log-normalized expression, scaled to unit variance on the training data only (not centred, which keeps the matrix sparse). See "Gene scaling" below for the two ways to compute the variance.
-- **Tuning:** a stratified 70/30 train/test split, then 5-fold stratified cross-validation on the training set over `alpha` and `l1_ratio` (0.25, 0.5, 0.75, 1). For each `l1_ratio`, there are 20 alphas, evenly spaced on a linear scale from just below alpha_max (the smallest alpha that drops every gene) down to 0.01. So most of them are near the top, where models keep few genes. The aim is a model with few genes. Models are scored by held-out log-loss (class-weighted). The best pair is refitted on the whole training set and evaluated on the test set.
+- **Tuning:** a train/test split by donor (about 70/30), then 5-fold cross-validation on the training set, also by donor, over `alpha` and `l1_ratio` (0.25, 0.5, 0.75, 1). For each `l1_ratio`, there are 20 alphas, evenly spaced on a linear scale from just below alpha_max (the smallest alpha that drops every gene) down to 0.01. So most of them are near the top, where models keep few genes. The aim is a model with few genes. Models are scored by held-out log-loss (class-weighted). The best pair is refitted on the whole training set and evaluated on the test set.
 
 ### Gene scaling
 
@@ -109,8 +109,14 @@ Tier 1 (`03`–`05`) divides each gene by its standard deviation on the training
 
 ### 03_prep.py
 
-- **Needs:** from `02`, in `<STORAGE_DIR>/`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`.
-- **Produces:** in `<STORAGE_DIR>/reed_level2_classifier/`: `X.npz` (cells x genes expression, unscaled) and `prep.npz` (the labels, the train/test split, each training cell's CV fold, and the alpha grid for each `l1_ratio`).
+- **Needs:** from `02`, in `<STORAGE_DIR>/`: `reed_state_marker_expr.mtx.gz`, `.genes.txt.gz`, `.cells.txt.gz` and `reed_cell_labels.csv.gz`. Also `hbca-global.h5ad` (in `HBCA_DIR`), for each cell's donor.
+- **Produces:** in `<STORAGE_DIR>/reed_level2_classifier/`: `X.npz` (cells x genes expression, unscaled) and `prep.npz` (the labels, each cell's donor, the train/test split, each training cell's CV fold, and the alpha grid for each `l1_ratio`).
+
+**Every split is by donor, not by cell,** so a model is always scored on donors it never saw. (Until 2026-10-19 the splits were by cell; see "Earlier results".) The atlas has 55 donors.
+
+- **Train/test:** `donor_split` (in `hbca_classifier/settings.py`) holds out about 30% of the donors (`TEST_SIZE`). Some states come mostly from a few donors (one donor has 38% of the LASP5 cells), so a random donor set can leave a state badly over- or under-represented in the test set. It tries 2,000 random donor sets (`DONOR_SPLIT_TRIES`, seeded) and keeps the one whose per-state test shares are closest to 30%. The log lists the test donors and each state's test share.
+- **CV folds:** scikit-learn's `StratifiedGroupKFold` over the training cells, grouped by donor, so all of a donor's cells are in one fold. The log shows each fold's donors and per-state shares.
+- **Donors:** read from `obs/donor_id` in `hbca-global.h5ad` with `h5py`, matched to the cells by name.
 
 The alpha grids are set once from the whole training set, so every fold uses the same values and their results can be averaged. alpha_max depends on the data and the `l1_ratio` (about 0.25 / `l1_ratio` on the 300-per-class test), so each `l1_ratio` has its own grid. The 0.01 floor (`ALPHA_MIN`) is shared. The log lists every value. `slurm/Run_03.sh`: 4 CPUs, 64G.
 
@@ -160,7 +166,7 @@ sbatch slurm/Run_06.sh 300 40
 What it does:
 
 - **Genes:** the nonzero rows of `05`'s model. They were chosen using only the training set, so the test set stays untouched.
-- **Data:** the training set from `03`, minus 10% held back for validation (stratified). Each gene is centred and scaled on the remaining training part.
+- **Data:** the training set from `03`, minus the cells of about 10% of the training donors, held back for validation (`NN_VAL_SIZE`, chosen with `donor_split` as for the test set). Each gene is centred and scaled on the remaining training part.
 - **Network:** dense layers of 64 and 32 units, with ReLU and 10% dropout, and one output per class. It's trained with Adam (learning rate 1e-3, batches of 512) on cross-entropy. Training stops once the validation loss hasn't improved for 20 epochs, and the best epoch's weights are kept.
 - **Baseline:** an unpenalized multinomial logistic regression on the same genes and cells. **If the network doesn't beat it, the nonlinearity isn't adding anything.**
 - **Class weights:** both models weight each class by its inverse frequency in the training data, so every class counts equally, as in balanced accuracy and macro F1. The selection model in `04`/`05` uses the same weights. Without weights, `"Other"` (57% of the full atlas) would dominate.
@@ -192,7 +198,7 @@ sbatch slurm/Run_07.sh 20000 40
 
 What it does:
 
-- **Cells:** the same as `06`. The training set minus the same 10% validation part is the reference. The validation part is used for tuning. The test set is used once.
+- **Cells:** the same as `06`. The training set minus the same validation donors is the reference. The validation donors' cells are used for tuning. The test set is used once.
 - **Gene scaling:** each gene is centred and divided by SD^beta, using the reference cells. Beta = 1 is unit variance, 0.5 is Pareto scaling, and 0 is no scaling (each gene keeps its own spread, so high-variance genes count more in the distance).
 - **Votes:** each of the k nearest reference cells (Euclidean distance) votes for its class with weight 1 / distance times (1 / its class's frequency in the reference)^gamma. Gamma = 0 is a plain distance-weighted vote; gamma = 1 fully corrects for class imbalance. Exact matches (distance 0) dominate the vote, as in scikit-learn.
 - **Tuning:** k (5, 10, 25, 50, 100, 200, 400), gamma (0, 0.25, 0.5, 0.75, 1) and beta (0, 0.5, 1) are chosen together by **validation balanced accuracy**. For each beta, the neighbours are found once, at the largest k, so the whole k x gamma grid costs about the same as one k. The log notes if the best k is at the edge of the grid.
@@ -214,6 +220,8 @@ sbatch slurm/Run_08.sh 20000 40
 Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they differ only in their genes. Genes are centred and scaled to unit variance over the plotted cells. **UMAP itself isn't seeded,** so it runs on all the job's cores, and its layout differs slightly each time it's run. **It runs in the base conda environment**, because the `torch` environment doesn't have umap-learn. The UMAP settings (`UMAP_N_NEIGHBORS`, `UMAP_MIN_DIST`, `UMAP_OTHER_SAMPLE`) are in `hbca_classifier/settings.py`. `slurm/Run_08.sh`: 8 CPUs, 64G.
 
 ### TRANSPLANT: 09_transplant.py and 10_transplant_summary.py
+
+**`09`–`11` were built on the cell-level split and haven't been rerun since the split moved to donors.** Their inputs and outputs are in `<STORAGE_DIR>/old_cell_split/`. The class-weighted gene scaling made them unnecessary: the full-data run now picks good genes by itself.
 
 Retrains the tier-2 models on the full data, on the genes that a capped run's tier-1 model chose. By default these are the 25 genes from the 20,000-per-class run with a 40-gene limit (`TRANSPLANT_SOURCE_CAP`, `TRANSPLANT_SOURCE_MAX_GENES`). The reason: on the full data, tier 1 chose a worse gene set (test balanced accuracy about 0.75 against 0.84). A likely cause is that inverse-frequency class weights become extreme there, about 2,200:1. The UMAPs (`08`) show the same thing.
 

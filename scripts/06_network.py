@@ -5,8 +5,8 @@
 # unpenalized multinomial logistic regression on the same genes: if the network doesn't beat it,
 # the nonlinearity isn't adding anything.
 #
-# Both models use the same cells: the training set from 03, minus a stratified validation part
-# (NN_VAL_SIZE), which the network uses for early stopping. Both weight each class by its inverse
+# Both models use the same cells: the training set from 03, minus a validation part (the cells of
+# about NN_VAL_SIZE of the training donors; donor_split), which the network uses for early stopping. Both weight each class by its inverse
 # frequency, so every class counts equally (as in balanced accuracy and macro F1). The test set is
 # used once, at the end. Settings are in hbca_classifier/settings.py.
 #
@@ -39,12 +39,11 @@ import seaborn as sns
 import torch
 from torch import nn
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from hbca_classifier.settings import (score_text, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
+from hbca_classifier.settings import (score_text, donor_split, describe_split, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
                                       NN_LEARNING_RATE, NN_BATCH_SIZE, NN_MAX_EPOCHS, NN_PATIENCE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       mean_log_loss, set_threads, get_class_weights)
@@ -81,9 +80,12 @@ X, prep = load_prepared(clf_dir)
 X = X[:, np.flatnonzero(selected)].toarray()
 y = prep['y']
 idx_test = prep['idx_test']
-# Split the training set into the part both models train on and the network's validation part
-idx_fit, idx_val = train_test_split(prep['idx_train'], test_size=NN_VAL_SIZE,
-                                    stratify=y[prep['idx_train']], random_state=RANDOM_STATE)
+# Split the training set into the part both models train on and the network's validation part:
+# the cells of about NN_VAL_SIZE of the training donors
+idx_train = prep['idx_train']
+is_val, _ = donor_split(prep['donors'][idx_train], y[idx_train], NN_VAL_SIZE)
+idx_fit, idx_val = idx_train[~is_val], idx_train[is_val]
+describe_split(y[idx_train], is_val, prep['donors'][idx_train], 'Validation')
 # Centre and scale each gene on the training part only
 scaler = StandardScaler().fit(X[idx_fit])
 X_fit, X_val, X_test = (scaler.transform(X[i]) for i in (idx_fit, idx_val, idx_test))

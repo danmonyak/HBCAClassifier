@@ -28,7 +28,9 @@ CLASSES = np.array(KEEP_STATES + ['Other'])      # fixed class order for coeffic
 # The states' families (11 falls back to these when no single state is confident enough)
 FAMILIES = {'LASP': KEEP_STATES[:5], 'LHS': KEEP_STATES[5:8], 'BMYO': KEEP_STATES[8:]}
 
-TEST_SIZE = 0.3          # 70/30 train/test split
+# Splits are by donor, not by cell, so a model is always scored on donors it never saw.
+TEST_SIZE = 0.3          # about 30% of the donors (and of each class's cells) form the test set
+DONOR_SPLIT_TRIES = 2000 # random donor sets tried for each donor split (see donor_split)
 N_FOLDS = 5              # cross-validation folds (on the training set)
 RANDOM_STATE = 0
 
@@ -54,7 +56,7 @@ MAX_ITER = 20000         # per alpha
 
 # Neural network on the selected genes (06). Trained on the training set minus a validation part,
 # which decides when to stop (early stopping). The loss is weighted by inverse class frequency.
-NN_VAL_SIZE = 0.1        # fraction of the training set held back for validation
+NN_VAL_SIZE = 0.1        # fraction of the training donors held back for validation (see donor_split)
 NN_HIDDEN = [64, 32]     # units in each hidden layer
 # Other network shapes 06 can train instead, chosen by name (its 3rd argument). Their outputs get a
 # _<name> suffix, so they never overwrite the default network's.
@@ -131,6 +133,36 @@ def load_prepared(clf_dir):
 def one_hot(y):
     """One-hot encode labels in the fixed class order."""
     return (y[:, None] == CLASSES[None, :]).astype(np.float64)
+
+
+def donor_split(donors, y, size, seed=RANDOM_STATE):
+    """Hold out about `size` of the donors, chosen so that each class keeps about `size` of its cells
+    in the held-out part. Tries DONOR_SPLIT_TRIES random sets of round(size x donors) donors and keeps
+    the one whose largest gap between a class's held-out share and `size` is smallest.
+    Returns (mask over cells: True = held out, that largest gap)."""
+    rng = np.random.default_rng(seed)
+    donor_ids, d_idx = np.unique(donors, return_inverse=True)
+    counts = np.zeros((len(donor_ids), len(CLASSES)))
+    np.add.at(counts, (d_idx, pd.Index(CLASSES).get_indexer(y)), 1)
+    totals = counts.sum(axis=0)
+    present = totals > 0
+    n_out = max(1, round(size * len(donor_ids)))
+    best, best_gap = None, np.inf
+    for _ in range(DONOR_SPLIT_TRIES):
+        pick = rng.choice(len(donor_ids), n_out, replace=False)
+        gap = np.abs(counts[pick].sum(axis=0)[present] / totals[present] - size).max()
+        if gap < best_gap:
+            best, best_gap = pick, gap
+    return np.isin(d_idx, best), best_gap
+
+
+def describe_split(y, held_out, donors, name):
+    """Print a split's donors and cells, and each class's share in the held-out part."""
+    share = pd.Series(y[held_out]).value_counts().reindex(CLASSES).fillna(0) / \
+        pd.Series(y).value_counts().reindex(CLASSES)
+    print(f"{name}: {len(np.unique(donors[held_out]))} of {len(np.unique(donors))} donors, "
+          f"{held_out.sum():,} of {len(y):,} cells ({held_out.mean():.2f}). Share of each class held out: "
+          + ", ".join(f"{c} {s:.2f}" for c, s in share.items()))
 
 
 def get_class_weights(y):
