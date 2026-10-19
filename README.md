@@ -6,8 +6,6 @@
 
 Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.), and a classifier that predicts its epithelial cell states (LASP1–5, LHS1–3, BMYO1–2) from a small set of marker genes. The goal is a set of about 20–40 genes that works as a predictor.
 
-This started as the `RNAseq_SingleCell/Reed_Explore` folder of `tamoxifen-scRNA-seq`, where the HBCA is the reference for level-2 label transfer (`Cell_Type_Assignment/02_SingleR_Reed_transfer.R`). It moved here with its git history. **The copy in `tamoxifen-scRNA-seq` is no longer updated:** it still uses that repo's config and the `90` run name, and its outputs are in that repo's `storage/90/`.
-
 ## Results
 
 From the 2,968 cell state marker genes, the tier-1 model (a multinomial group elastic net) selects **35 genes**. A neural network that predicts the cell state from only those genes reaches a **balanced accuracy of 0.861 on 16 held-out donors** (268,686 cells it never saw, from donors not used in training or gene selection). Balanced accuracy is the mean over the 11 classes of the percentage of each class's cells predicted correctly, so the rare states count as much as the common ones.
@@ -74,7 +72,7 @@ The Python steps import `hbca_classifier`, so the repo root must be on `PYTHONPA
    - `torch` for `03`–`07` (see "The torch environment" below).
    - The base conda environment for `08`, because it has umap-learn.
 
-Every script reads and writes its data objects directly in `STORAGE_DIR`. There's no run-name level, unlike `tamoxifen-scRNA-seq`'s `storage/<run>/`.
+Every script reads and writes its data objects directly in `STORAGE_DIR`.
 
 ## Running
 

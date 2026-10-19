@@ -1,7 +1,6 @@
 # 01_atlas_exploration.R
 #
-# Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.), the reference used
-# for level-2 label transfer in Cell_Type_Assignment/02_SingleR_Reed_transfer.R.
+# Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.).
 # Loads the atlas, ready for the analysis below.
 #
 # Needs:    hbca-global.h5ad, in the folder set as HBCA_DIR in local_paths.env
@@ -36,7 +35,7 @@ set.seed(rng.seed)
 # ------------------------------------------------------------------------
 
 # ---------------------- Read the HBCA reference
-# Same as Cell_Type_Assignment/02_SingleR_Reed_transfer.R: the atlas, read as a SingleCellExperiment
+# The atlas, read as a SingleCellExperiment
 cat("Loading reference dataset...")
 reed_dir <- get_local_path("HBCA_DIR")
 reed <- read_h5ad(file.path(reed_dir, "hbca-global.h5ad"), as = "SingleCellExperiment")
@@ -49,8 +48,8 @@ catObj(sort(table(reed$level2), decreasing = TRUE))
 
 # ---------------------- Analysis
 # reed (the atlas): useful colData columns are level0, level1 and level2 (the label hierarchy;
-#   level2 is what SingleR transferred to our cells), cell_type, donor_id, risk_status,
-#   brca_status and sample_type. Row names are Ensembl IDs, like ours (gene symbols are in
+#   level2 is what the classifier predicts), cell_type, donor_id, risk_status,
+#   brca_status and sample_type. Row names are Ensembl IDs (gene symbols are in
 #   rowData(reed)$feature_name).
 #
 # Save figures to figure_outdir_cur, e.g.

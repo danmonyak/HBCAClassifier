@@ -37,7 +37,7 @@ set.seed(rng.seed)
 # ------------------------------------------------------------------------
 
 # ---------------------- Read the HBCA reference
-# Same as Cell_Type_Assignment/02_SingleR_Reed_transfer.R: the atlas, read as a SingleCellExperiment.
+# The atlas, read as a SingleCellExperiment.
 # Its only assay, "X", is log-normalized expression. (The file's raw counts are in a
 # separate "raw" slot, which read_h5ad doesn't load.)
 cat("Loading reference dataset...")
