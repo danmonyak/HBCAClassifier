@@ -108,7 +108,7 @@ Tier 1 (`03`–`05`) divides each gene by its standard deviation on the training
 - `cells` (the default, and the original runs): every cell counts equally.
 - `balanced`: cells are weighted by inverse class frequency, as in the loss, so every class counts equally.
 
-**Why it matters:** in the full data, 57% of cells are "Other". With `cells` scaling, a gene expressed only in a small population has a tiny standard deviation, so it's scaled up a lot and becomes cheap for the lasso to keep. The full run's 40-gene model picked genes like that (ASPM, AURKB, OXTR, ROPN1), while the cap-20000 run picked broad markers. At cap 2000 with a 40-gene limit, `balanced` scaling gave a better network (test balanced accuracy 0.863 vs 0.847).
+**Why it matters:** in the full data, 57% of cells are "Other". With `cells` scaling, a gene expressed only in a small population has a tiny standard deviation, so it's scaled up a lot and becomes cheap for the lasso to keep. The full run's 40-gene model picked genes like that (ASPM, AURKB, OXTR, ROPN1), while the cap-20000 run picked broad markers. At cap 2000 with a 40-gene limit, `balanced` scaling gave a better network (test balanced accuracy 0.863 vs 0.847). **On the full data with a 40-gene limit, it fixed the gene selection:** 38 broad marker genes (21 shared with the cap-20000 run), and a network test balanced accuracy of 0.867, against 0.750 with `cells` scaling (25 genes; same test cells) and 0.842 for the cap-20000 run. Its UMAP (`08`) shows clean LASP / LHS / BMYO / Other blocks. Part of the gain may come from the extra genes: the alpha grid has no point near 25 genes.
 
 ```
 export HBCA_SCALING=balanced
