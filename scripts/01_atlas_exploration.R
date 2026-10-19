@@ -1,10 +1,12 @@
 # 01_atlas_exploration.R
 #
-# Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.).
-# Loads the atlas, ready for the analysis below.
+# Exploration of the Human Breast Cell Atlas (HBCA, Reed et al.): the atlas's size and labels, and
+# each donor's mix of epithelial subtypes.
 #
 # Needs:    hbca-global.h5ad, in the folder set as HBCA_DIR in local_paths.env
-# Produces: nothing yet. It prints the atlas's size and main labels.
+# Produces: in figures/01/: LASP_subtypes_per_donor.png, LHS_subtypes_per_donor.png and
+#           BMYO_subtypes_per_donor.png (one bar per donor, that cell type's subtypes stacked).
+#           The log has the cell counts per label and the per-donor subtype proportions.
 #
 # Usage: Rscript scripts/01_atlas_exploration.R
 

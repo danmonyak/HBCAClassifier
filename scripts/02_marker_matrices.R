@@ -8,8 +8,10 @@
 #
 # Needs:    hbca-global.h5ad, in the folder set as HBCA_DIR in local_paths.env
 #           data/HBCA_Reed_Top_Marker_Genes.xlsx (sheets "celltype" and "state")
-# Produces: nothing saved yet. The two matrices are celltype.marker.expr and
-#           state.marker.expr (genes x cells, gene symbols as row names).
+# Produces: in <STORAGE_DIR>/: the two matrices (genes x cells, gene symbols as row names) as
+#           reed_celltype_marker_expr.rds and reed_state_marker_expr.rds, and for Python as
+#           <name>.mtx.gz with <name>.genes.txt.gz and <name>.cells.txt.gz; each cell's labels as
+#           reed_level1.rds, reed_level2.rds and reed_cell_labels.csv.gz. 03 reads the state matrix.
 #
 # Usage: Rscript scripts/02_marker_matrices.R
 
