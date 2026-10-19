@@ -16,8 +16,12 @@
 #           nn.pt                 the network's weights, plus the genes, classes and input scaling
 #           nn_comparison.csv     test log-loss, accuracy, balanced accuracy and macro F1, for both models
 #           nn_test_report.csv, baseline_test_report.csv   per-class precision, recall and F1 on the test set
+#           baseline.npz          the baseline's coefficients and input scaling
+#           test_predictions_nn.npz, test_predictions_baseline.npz   the test cells, their true class and
+#                                 each model's probabilities (scripts/figures.py redraws the test figures)
 #           in figures/06/ (or .../06/cap<N>/): nn_training_curve.png (training and validation
-#           loss per epoch), nn_test_confusion_matrix.png and baseline_test_confusion_matrix.png
+#           loss per epoch), and for each model (nn_, baseline_): test_confusion_matrix.png (rows sum
+#           to 1), test_confusion_matrix_precision.png (columns sum to 1) and test_precision_recall.png
 #
 # Optional 3rd argument: the name of another network shape in NN_ARCHITECTURES (e.g. deep). Every
 # output then gets an extra _<name> suffix, so the default network's results are kept.
@@ -35,18 +39,18 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns
 import torch
 from torch import nn
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
-                             classification_report, confusion_matrix)
+                             classification_report)
 
 from hbca_classifier.settings import (score_text, donor_split, describe_split, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
                                       NN_LEARNING_RATE, NN_BATCH_SIZE, NN_MAX_EPOCHS, NN_PATIENCE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       mean_log_loss, set_threads, get_class_weights)
+from hbca_classifier.plots import save_predictions, draw_model_figures
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -107,16 +111,11 @@ def evaluate(name, P):
                       f1_macro=f1_score(y_test, pred, labels=CLASSES, average='macro', zero_division=0))
 
 
-def save_confusion_matrix(pred, title, file_name):
-    """Confusion matrix on the test set, as the fraction of each true class (rows sum to 1)."""
-    cm = confusion_matrix(y_test, pred, labels=CLASSES, normalize='true')
-    fig, ax = plt.subplots(figsize=(9, 7.5))
-    sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
-                vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
-    ax.set(xlabel='Predicted', ylabel='True', title=f'{title}\n{score_text(y_test, pred)}')
-    fig.tight_layout()
-    fig.savefig(os.path.join(figure_outdir_cur, file_name), dpi=200)
-    plt.close(fig)
+def save_and_draw(model, P, label):
+    """Save a model's test predictions and draw its test figures from them (scripts/figures.py redraws them)."""
+    pred_file = save_predictions(clf_dir, model, out, prep['cells'][idx_test], y_test, P, label,
+                                 step='06', name=f'{model}_')
+    draw_model_figures(pred_file, figure_outdir_cur)
 
 
 def save_report(pred, file_name):
@@ -133,8 +132,10 @@ log(f"baseline fitted ({baseline.n_iter_[0]} iterations)")
 P_base = baseline.predict_proba(X_test)[:, pd.Index(baseline.classes_).get_indexer(CLASSES)]
 pred_base, metrics_base = evaluate('Logistic regression (unpenalized)', P_base)
 save_report(pred_base, f'baseline_test_report{out}.csv')
-save_confusion_matrix(pred_base, f'Logistic regression, {len(genes)} genes: test set',
-                      f'baseline_test_confusion_matrix{out}.png')
+save_and_draw('baseline', P_base, f'Logistic regression (unpenalized), {len(genes)} genes')
+# The baseline's coefficients, to apply it to other cells: P = softmax(((x - mean) / scale) @ coef.T + intercept)
+np.savez(os.path.join(clf_dir, f'baseline{out}.npz'), coef=baseline.coef_, intercept=baseline.intercept_,
+         classes=baseline.classes_, genes=genes, scaler_mean=scaler.mean_, scaler_scale=scaler.scale_)
 
 # ---------------------- Neural network
 # Dense layers with ReLU and dropout, then one output per class (softmax is inside the loss)
@@ -184,8 +185,7 @@ with torch.no_grad():
 nn_name = 'Neural network' + ('' if architecture is None else f", {architecture} ({'-'.join(map(str, hidden))})")
 pred_nn, metrics_nn = evaluate(nn_name, P_nn)
 save_report(pred_nn, f'nn_test_report{out}.csv')
-save_confusion_matrix(pred_nn, f'Neural network, {len(genes)} genes: test set',
-                      f'nn_test_confusion_matrix{out}.png')
+save_and_draw('nn', P_nn, f'{nn_name}, {len(genes)} genes')
 
 # Training curve: (weighted) loss per epoch, with the epoch kept marked
 hist = pd.DataFrame(history)

@@ -24,8 +24,11 @@
 #           knn_test_report.csv  per-class precision, recall and F1 on the test set
 #           knn_comparison.csv   test accuracy, balanced accuracy and macro F1 for KNN, plus the
 #                                network and baseline rows from 06 if they exist
+#           test_predictions_knn.npz  the test cells, their true class and KNN's vote shares
+#                                (scripts/figures.py redraws the test figures from it)
 #           in figures/07/ (or .../07/cap<N>/): knn_tuning.png (validation balanced accuracy
-#           over k x gamma, one panel per beta) and knn_test_confusion_matrix.png
+#           over k x gamma, one panel per beta), and knn_test_confusion_matrix.png (rows sum to 1),
+#           knn_test_confusion_matrix_precision.png (columns sum to 1) and knn_test_precision_recall.png
 #
 # Usage: python scripts/07_knn.py [max_cells_per_class] [max_genes]
 #        e.g. after `sbatch slurm/Run_05.sh 20000 40`: sbatch slurm/Run_07.sh 20000 40
@@ -42,10 +45,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
-                             classification_report, confusion_matrix)
+                             classification_report)
 
-from hbca_classifier.settings import (score_text, donor_split, describe_split, CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
+from hbca_classifier.settings import (donor_split, describe_split, CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared, set_threads)
+from hbca_classifier.plots import save_predictions, draw_model_figures
 
 t_start = time.time()
 log = lambda s: print(f"[{time.time() - t_start:7.1f} s] {s}", flush=True)
@@ -164,22 +168,17 @@ plt.close(fig)
 # ---------------------- Evaluate the chosen k and gamma on the test set
 test_sums = class_vote_sums(scale(X_test_raw, best_beta), scale(X_ref_raw, best_beta))
 log("test neighbours found")
-_, pred_test = predict(test_sums[best_k], best_gamma)
+scores_test, pred_test = predict(test_sums[best_k], best_gamma)
 print("\nWeighted KNN on the test set:")
 print(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0))
 pd.DataFrame(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0, output_dict=True)) \
     .T.to_csv(os.path.join(clf_dir, f'knn_test_report{suffix}.csv'))
 
-cm = confusion_matrix(y_test, pred_test, labels=CLASSES, normalize='true')
-fig, ax = plt.subplots(figsize=(9, 7.5))
-sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
-            vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
-ax.set(xlabel='Predicted', ylabel='True',
-       title=f'Weighted KNN, {len(genes)} genes (k = {best_k}, gamma = {best_gamma}, beta = {best_beta}): test set\n'
-             f'{score_text(y_test, pred_test)}')
-fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, f'knn_test_confusion_matrix{suffix}.png'), dpi=200)
-plt.close(fig)
+# Save the test predictions (vote shares), and draw the test figures from them (scripts/figures.py redraws them)
+pred_file = save_predictions(clf_dir, 'knn', suffix, prep['cells'][idx_test], y_test, scores_test,
+                             f'Weighted KNN, {len(genes)} genes (k {best_k}, gamma {best_gamma}, beta {best_beta})',
+                             step='07', name='knn_')
+draw_model_figures(pred_file, figure_outdir_cur)
 
 # ---------------------- Compare with 06 (network and baseline), if it has run
 # KNN has no log-loss: its probabilities are vote shares, which move in steps of about 1/k.

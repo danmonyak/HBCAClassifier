@@ -18,8 +18,11 @@
 #           test_report.csv  per-class precision, recall and F1 on the test set
 #           model.npz        W, b, the genes, classes and the scaler's per-gene scale, to apply the
 #                            model to other cells: P = softmax((x / scale) @ W + b)
+#           test_predictions_tier1.npz  the test cells, their true class and the model's probabilities
+#                            (hbca_classifier/plots.py; scripts/figures.py redraws the test figures from it)
 #           in figures/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes
-#           kept against alpha) and test_confusion_matrix.png
+#           kept against alpha), and test_confusion_matrix.png (rows sum to 1),
+#           test_confusion_matrix_precision.png (columns sum to 1) and test_precision_recall.png
 #           With max_genes, every file above except cv_summary.csv gets a _max<N>genes suffix.
 #
 # Usage: python scripts/05_fit.py [max_cells_per_class] [max_genes]
@@ -35,16 +38,16 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
-                             classification_report, confusion_matrix, f1_score)
+                             classification_report, f1_score)
 
-from hbca_classifier.settings import (score_text, CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
+from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       one_hot, mean_log_loss, set_threads,
                                       get_class_weights, get_sample_weights, get_scaling_weights)
 from hbca_classifier.group_enet import MultinomialGroupEnet, predict_proba
+from hbca_classifier.plots import save_predictions, draw_model_figures
 
 warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in beta.*')
 
@@ -141,16 +144,11 @@ print(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0))
 pd.DataFrame(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0, output_dict=True)) \
     .T.to_csv(os.path.join(clf_dir, f'test_report{suffix}.csv'))
 
-# Confusion matrix on the test set, as the fraction of each true class (rows sum to 1)
-cm = confusion_matrix(y_test, pred_test, labels=CLASSES, normalize='true')
-fig, ax = plt.subplots(figsize=(9, 7.5))
-sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
-            vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
-ax.set(xlabel='Predicted', ylabel='True',
-       title=f'Test set confusion matrix ({(np.linalg.norm(W, axis=1) > 0).sum()} genes, '
-             f'l1_ratio {best_l1_ratio}, alpha {best_alpha:.3g})\n{score_text(y_test, pred_test)}')
-fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, f'test_confusion_matrix{suffix}.png'), dpi=200)
+# Save the test predictions, and draw the test figures from them (scripts/figures.py redraws them)
+pred_file = save_predictions(clf_dir, 'tier1', suffix, prep['cells'][idx_test], y_test, P_test,
+                             f'Tier-1 model, {(np.linalg.norm(W, axis=1) > 0).sum()} genes '
+                             f'(l1_ratio {best_l1_ratio}, alpha {best_alpha:.3g})', step='05', name='')
+draw_model_figures(pred_file, figure_outdir_cur)
 
 # ---------------------- Coefficients
 # On the scaled-gene scale. Genes dropped by the group lasso have all-zero rows.

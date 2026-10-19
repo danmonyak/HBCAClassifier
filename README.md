@@ -14,9 +14,9 @@ Run everything from the repo root, because figures, logs and `data/` are relativ
 
 | Folder | What |
 | --- | --- |
-| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `11_transplant_thresholds.py`. |
-| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_11.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
-| `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py` and `tier2_models.py` (see "Other files"). |
+| `scripts/` | The steps, numbered in run order: `01_atlas_exploration.R`, `02_marker_matrices.R`, then the classifier, `03_prep.py` to `11_transplant_thresholds.py`; and `figures.py`, which redraws a run's test figures. |
+| `slurm/` | One SLURM script per step, `Run_01.sh` to `Run_11.sh`, and `Run_figures.sh`. Submit them from the repo root, e.g. `sbatch slurm/Run_05.sh 20000 40`. |
+| `hbca_classifier/` | The Python code the steps share: `config.py`, `settings.py`, `group_enet.py`, `tier2_models.py` and `plots.py` (see "Other files"). |
 | `dev/` | Code the steps don't use: `multinomial_group_lasso.py`, the skglm version of the model, kept to cross-check the PyTorch solver. |
 | `logs/` | SLURM stdout and stderr. |
 | `data/` | The marker gene workbook (not in git). |
@@ -81,7 +81,7 @@ What it does:
 
 ## The level2 classifier: 03 to 11
 
-Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes, and `11` tries other decision rules on the TRANSPLANT networks. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Every figure of one model's test results (confusion matrices, and `06`'s training curve) has its test balanced accuracy and macro F1 in the title (`score_text` in `hbca_classifier/settings.py`). Cells left unclassified in `11` count as misses. Run `03`–`05` in order, from the repo root:
+Three Python steps (`03`–`05`) that predict each atlas cell's epithelial cell state from its expression of the cell state marker genes. `06` (a neural network) and `07` (weighted KNN) then predict the class from only the genes that `05` selected. We call `05`'s model the tier-1 model (it chooses the genes) and `06`/`07` the tier-2 models. `08` plots a UMAP of all cells on the selected genes. `09` and `10` (TRANSPLANT) retrain the tier-2 models on the full data with a capped run's genes, and `11` tries other decision rules on the TRANSPLANT networks. They run in the `torch` conda environment (`08` in base; see Setup), and share their settings, in `hbca_classifier/settings.py`. Every figure of one model's test results has its test balanced accuracy and macro F1 in the title (`score_text` in `hbca_classifier/settings.py`). Cells left unclassified in `11` count as misses. **`05`, `06` and `07` save each model's test predictions, and draw its test figures from them,** so the figures can be redrawn without refitting (see "Test figures" below). Run `03`–`05` in order, from the repo root:
 
 ```
 a=$(sbatch --parsable slurm/Run_03.sh [cap])
@@ -135,7 +135,8 @@ The alpha grids are set once from the whole training set, so every fold uses the
   - `coef.csv`: the fitted coefficients (the intercept, then one row per gene; one column per class, plus an `importance` column).
   - `test_report.csv`: precision, recall and F1 per class on the test set.
   - `model.npz`: `W`, `b`, the genes, classes and per-gene `scale`, to apply the model to other cells: probabilities = softmax((x / scale) @ W + b), with x the log-normalized expression of the same genes.
-  - In `figures/05/`: `cv_curves.png` (mean CV log-loss, macro F1 and genes kept against alpha, one line per `l1_ratio`; a black star marks the chosen model) and `test_confusion_matrix.png`.
+  - `test_predictions_tier1.npz`: the test cells, their true class and the model's probabilities.
+  - In `figures/05/`: `cv_curves.png` (mean CV log-loss, macro F1 and genes kept against alpha, one line per `l1_ratio`; a black star marks the chosen model), and the three test figures (see "Test figures"): `test_confusion_matrix.png`, `test_confusion_matrix_precision.png` and `test_precision_recall.png`.
 
 The log has the test accuracy, balanced accuracy, macro F1 and log-loss, and the top genes. `slurm/Run_05.sh`: 16 CPUs, 48G.
 
@@ -161,7 +162,9 @@ sbatch slurm/Run_06.sh 300 40
   - `nn.pt`: the network's weights, plus its genes, classes and input scaling (mean and SD per gene).
   - `nn_comparison.csv`: test log-loss (class-weighted), accuracy, balanced accuracy and macro F1, for the network and the baseline.
   - `nn_test_report.csv` and `baseline_test_report.csv`: per-class precision, recall and F1 on the test set.
-  - In `figures/06/` (or `.../06/cap<N>/`): `nn_training_curve.png` (training and validation loss per epoch), `nn_test_confusion_matrix.png` and `baseline_test_confusion_matrix.png`.
+  - `baseline.npz`: the baseline's coefficients and input scaling, to apply it to other cells.
+  - `test_predictions_nn.npz` and `test_predictions_baseline.npz`: the test cells, their true class and each model's probabilities.
+  - In `figures/06/` (or `.../06/cap<N>/`): `nn_training_curve.png` (training and validation loss per epoch), and the three test figures for each model, with an `nn_` or `baseline_` prefix (see "Test figures").
 
 What it does:
 
@@ -194,7 +197,8 @@ sbatch slurm/Run_07.sh 20000 40
   - `knn_tuning.csv`: validation balanced accuracy and macro F1 for every k, gamma and beta.
   - `knn_test_report.csv`: per-class precision, recall and F1 on the test set.
   - `knn_comparison.csv`: test accuracy, balanced accuracy and macro F1 for KNN, plus the network and baseline rows from `06`.
-  - In `figures/07/` (or `.../07/cap<N>/`): `knn_tuning.png` (validation balanced accuracy over k x gamma, one panel per beta) and `knn_test_confusion_matrix.png`.
+  - `test_predictions_knn.npz`: the test cells, their true class and KNN's vote shares.
+  - In `figures/07/` (or `.../07/cap<N>/`): `knn_tuning.png` (validation balanced accuracy over k x gamma, one panel per beta), and the three test figures with a `knn_` prefix (see "Test figures").
 
 What it does:
 
@@ -273,6 +277,23 @@ What it does:
 
 The baseline and KNN aren't included, because `09` didn't save their validation scores. The settings (`POSTHOC_GAMMAS`, `THRESHOLD_GRID`) are in `hbca_classifier/settings.py`. `slurm/Run_11.sh`: 4 CPUs, 32G.
 
+### Test figures: figures.py
+
+Each model's test figures are drawn only from its saved predictions, by `hbca_classifier/plots.py`. There are three per model:
+
+- `<prefix>test_confusion_matrix.png`: the fraction of each true class predicted as each class. **Rows sum to 1, and the diagonal is recall.**
+- `<prefix>test_confusion_matrix_precision.png`: the fraction of each predicted class that was really each class. **Columns sum to 1, and the diagonal is precision.** The rest of each column shows what the wrong calls really were.
+- `<prefix>test_precision_recall.png`: precision and recall of each class side by side, with each class's number of test cells.
+
+Each title has the model's test balanced accuracy and macro F1. To change a figure, edit `hbca_classifier/plots.py`, then redraw every model of a run:
+
+```
+sbatch slurm/Run_figures.sh [max_cells_per_class]    # e.g. 2000, or nothing for the full data
+```
+
+- **Needs:** the run's `test_predictions_<model>[_max<G>genes].npz` files (from `05`, `06`, `07`).
+- **Produces:** each model's three test figures, in its step's figure folder (`figures/05/`, `06/` or `07/`, with `cap<N>/` for a capped run). It refits nothing and takes about a minute. `slurm/Run_figures.sh`: 2 CPUs, 16G.
+
 ### The model code
 
 - `hbca_classifier/group_enet.py` fits the model with PyTorch, by accelerated proximal gradient (FISTA). Each step is a few large matrix products, so it uses every CPU core the job has, and it would also run on a GPU (`device="cuda"`). It takes optional per-cell weights (`sample_weight`). The weighted version was checked two ways: against scikit-learn's weighted ridge fit (probabilities within 1e-7), and against an unweighted fit on duplicated cells (within 1e-9).
@@ -306,6 +327,7 @@ Every run up to 2026-10-19 split the data by cell: training and test cells could
 - `hbca_classifier/settings.py`: the classifier's settings (classes, split, folds, penalty grid, solver tolerance, network, KNN, UMAP and TRANSPLANT settings) and shared helpers.
 - `hbca_classifier/group_enet.py`: the tier-1 model's solver (see "The model code").
 - `hbca_classifier/tier2_models.py`: the tier-2 network training and KNN votes as functions, used by `09`.
+- `hbca_classifier/plots.py`: saves and loads test predictions, and draws the test figures (see "Test figures").
 - `local_paths.env.example`: template for `local_paths.env`.
 - `slurm/Run_01.sh`: SLURM script for `01_atlas_exploration.R`. It requests 100G and 1 day on `htc`, and runs in the `renv` environment, because loading the atlas takes a lot of memory. `slurm/Run_02.sh` (for `02_marker_matrices.R`) has the same resources.
 - `slurm/Run_03.sh` to `slurm/Run_11.sh`: SLURM scripts for the classifier steps (`torch` environment, except `slurm/Run_08.sh`: base). Each puts the repo root on `PYTHONPATH`.
