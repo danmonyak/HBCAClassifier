@@ -18,11 +18,10 @@
 #           test_report.csv  per-class precision, recall and F1 on the test set
 #           model.npz        W, b, the genes, classes and the scaler's per-gene scale, to apply the
 #                            model to other cells: P = softmax((x / scale) @ W + b)
-#           test_predictions_tier1.npz  the test cells, their true class and the model's probabilities
-#                            (hbca_classifier/plots.py; scripts/figures.py redraws the test figures from it)
-#           in figures/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes
-#           kept against alpha), and test_confusion_matrix.png (rows sum to 1),
-#           test_confusion_matrix_precision.png (columns sum to 1) and test_precision_recall.png
+#           test_predictions_tier1.npz  the test cells, their true class and donor, and the model's
+#                            probabilities (hbca_classifier/plots.py; scripts/figures.py redraws the figure)
+#           in figures/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes kept
+#           against alpha), and test_confusion_matrix.png and .pdf (% of each true state)
 #           With max_genes, every file above except cv_summary.csv gets a _max<N>genes suffix.
 #
 # Usage: python scripts/05_fit.py [max_cells_per_class] [max_genes]
@@ -144,8 +143,8 @@ print(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0))
 pd.DataFrame(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0, output_dict=True)) \
     .T.to_csv(os.path.join(clf_dir, f'test_report{suffix}.csv'))
 
-# Save the test predictions, and draw the test figures from them (scripts/figures.py redraws them)
-pred_file = save_predictions(clf_dir, 'tier1', suffix, prep['cells'][idx_test], y_test, P_test,
+# Save the test predictions, and draw the test figure from them (scripts/figures.py redraws it)
+pred_file = save_predictions(clf_dir, 'tier1', suffix, prep['cells'][idx_test], y_test, prep['donors'][idx_test], P_test,
                              f'Tier-1 model, {(np.linalg.norm(W, axis=1) > 0).sum()} genes '
                              f'(l1_ratio {best_l1_ratio}, alpha {best_alpha:.3g})', step='05', name='')
 draw_model_figures(pred_file, figure_outdir_cur)

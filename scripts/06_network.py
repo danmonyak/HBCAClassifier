@@ -18,10 +18,9 @@
 #           nn_test_report.csv, baseline_test_report.csv   per-class precision, recall and F1 on the test set
 #           baseline.npz          the baseline's coefficients and input scaling
 #           test_predictions_nn.npz, test_predictions_baseline.npz   the test cells, their true class and
-#                                 each model's probabilities (scripts/figures.py redraws the test figures)
+#                                 donor, and each model's probabilities (scripts/figures.py redraws the figures)
 #           in figures/06/ (or .../06/cap<N>/): nn_training_curve.png (training and validation
-#           loss per epoch), and for each model (nn_, baseline_): test_confusion_matrix.png (rows sum
-#           to 1), test_confusion_matrix_precision.png (columns sum to 1) and test_precision_recall.png
+#           loss per epoch), and for each model (nn_, baseline_): test_confusion_matrix.png and .pdf
 #
 # Optional 3rd argument: the name of another network shape in NN_ARCHITECTURES (e.g. deep). Every
 # output then gets an extra _<name> suffix, so the default network's results are kept.
@@ -112,8 +111,8 @@ def evaluate(name, P):
 
 
 def save_and_draw(model, P, label):
-    """Save a model's test predictions and draw its test figures from them (scripts/figures.py redraws them)."""
-    pred_file = save_predictions(clf_dir, model, out, prep['cells'][idx_test], y_test, P, label,
+    """Save a model's test predictions and draw its test figure from them (scripts/figures.py redraws it)."""
+    pred_file = save_predictions(clf_dir, model, out, prep['cells'][idx_test], y_test, prep['donors'][idx_test], P, label,
                                  step='06', name=f'{model}_')
     draw_model_figures(pred_file, figure_outdir_cur)
 

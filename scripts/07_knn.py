@@ -24,11 +24,10 @@
 #           knn_test_report.csv  per-class precision, recall and F1 on the test set
 #           knn_comparison.csv   test accuracy, balanced accuracy and macro F1 for KNN, plus the
 #                                network and baseline rows from 06 if they exist
-#           test_predictions_knn.npz  the test cells, their true class and KNN's vote shares
-#                                (scripts/figures.py redraws the test figures from it)
+#           test_predictions_knn.npz  the test cells, their true class and donor, and KNN's vote shares
+#                                (scripts/figures.py redraws the figure from it)
 #           in figures/07/ (or .../07/cap<N>/): knn_tuning.png (validation balanced accuracy
-#           over k x gamma, one panel per beta), and knn_test_confusion_matrix.png (rows sum to 1),
-#           knn_test_confusion_matrix_precision.png (columns sum to 1) and knn_test_precision_recall.png
+#           over k x gamma, one panel per beta), and knn_test_confusion_matrix.png and .pdf
 #
 # Usage: python scripts/07_knn.py [max_cells_per_class] [max_genes]
 #        e.g. after `sbatch slurm/Run_05.sh 20000 40`: sbatch slurm/Run_07.sh 20000 40
@@ -174,8 +173,8 @@ print(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0))
 pd.DataFrame(classification_report(y_test, pred_test, labels=CLASSES, zero_division=0, output_dict=True)) \
     .T.to_csv(os.path.join(clf_dir, f'knn_test_report{suffix}.csv'))
 
-# Save the test predictions (vote shares), and draw the test figures from them (scripts/figures.py redraws them)
-pred_file = save_predictions(clf_dir, 'knn', suffix, prep['cells'][idx_test], y_test, scores_test,
+# Save the test predictions (vote shares), and draw the test figure from them (scripts/figures.py redraws it)
+pred_file = save_predictions(clf_dir, 'knn', suffix, prep['cells'][idx_test], y_test, prep['donors'][idx_test], scores_test,
                              f'Weighted KNN, {len(genes)} genes (k {best_k}, gamma {best_gamma}, beta {best_beta})',
                              step='07', name='knn_')
 draw_model_figures(pred_file, figure_outdir_cur)

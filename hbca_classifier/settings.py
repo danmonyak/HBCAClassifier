@@ -168,12 +168,9 @@ def get_scaling_weights(y):
 
 
 def score_text(y_true, pred):
-    """'balanced accuracy x, macro F1 y' for figure titles. Both are over the 11 classes; a prediction
-    that isn't one of them (e.g. 'Unclassified' in 11) counts as a miss."""
-    from sklearn.metrics import recall_score, f1_score
-    bacc = recall_score(y_true, pred, labels=CLASSES, average='macro', zero_division=0)
-    f1 = f1_score(y_true, pred, labels=CLASSES, average='macro', zero_division=0)
-    return f"balanced accuracy {bacc:.3f}, macro F1 {f1:.3f}"
+    """'balanced accuracy x' for figure titles: the mean over the 11 classes of each class's recall."""
+    from sklearn.metrics import balanced_accuracy_score
+    return f"balanced accuracy {balanced_accuracy_score(y_true, pred):.3f}"
 
 
 def mean_log_loss(y, P, class_weights=None):
