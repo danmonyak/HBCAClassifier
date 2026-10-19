@@ -136,7 +136,7 @@ The alpha grids are set once from the whole training set, so every fold uses the
   - `test_report.csv`: precision, recall and F1 per class on the test set.
   - `model.npz`: `W`, `b`, the genes, classes and per-gene `scale`, to apply the model to other cells: probabilities = softmax((x / scale) @ W + b), with x the log-normalized expression of the same genes.
   - `test_predictions_tier1.npz`: the test cells, their true class and donor, and the model's probabilities.
-  - In `figures/05/`: `cv_curves.png` (mean CV log-loss, macro F1 and genes kept against alpha, one line per `l1_ratio`; a black star marks the chosen model), and `test_confusion_matrix.png` and `.pdf` (see "Test figures").
+  - In `figures/05/`: `cv_curves.png` (mean CV log-loss, balanced accuracy and genes kept against alpha, one line per `l1_ratio`; a black star marks the chosen model), and `test_confusion_matrix.png` and `.pdf` (see "Test figures").
 
 The log has the test accuracy, balanced accuracy, macro F1 and log-loss, and the top genes. `slurm/Run_05.sh`: 16 CPUs, 48G.
 
@@ -227,14 +227,14 @@ Every run's UMAP uses the same cells (the `"Other"` sample is seeded), so they d
 
 Each model's test figure is a confusion matrix, drawn only from its saved predictions by `hbca_classifier/plots.py`: `<prefix>test_confusion_matrix[_max<G>genes].png` and `.pdf`. Each row is a true state, and shows the percentage of its test cells predicted as each state, so **rows sum to 100% and the diagonal is each state's recall. Balanced accuracy, in the title, is the mean of the diagonal.** The title also gives the number of held-out test donors and cells. Values under 0.5% are left blank. The PDF is for print.
 
-To change the figure, edit `hbca_classifier/plots.py`, then redraw every model of a run:
+`plots.py` also draws `05`'s CV curves. To change either figure, edit `hbca_classifier/plots.py`, then redraw every figure of a run:
 
 ```
 sbatch slurm/Run_figures.sh [max_cells_per_class]    # e.g. 2000, or nothing for the full data
 ```
 
-- **Needs:** the run's `test_predictions_<model>[_max<G>genes].npz` files (from `05`, `06`, `07`), and its `prep.npz` (from `03`).
-- **Produces:** each model's confusion matrix, in its step's figure folder (`figures/05/`, `06/` or `07/`, with `cap<N>/` for a capped run). It refits nothing and takes under a minute. `slurm/Run_figures.sh`: 2 CPUs, 16G.
+- **Needs:** the run's `test_predictions_<model>[_max<G>genes].npz` files (from `05`, `06`, `07`), `cv_summary.csv` and `model[_max<G>genes].npz` (from `05`), and `prep.npz` (from `03`).
+- **Produces:** each model's confusion matrix, in its step's figure folder (`figures/05/`, `06/` or `07/`, with `cap<N>/` for a capped run), and `figures/05/cv_curves[_max<G>genes].png`. It refits nothing and takes under a minute. `slurm/Run_figures.sh`: 2 CPUs, 16G.
 
 ### The model code
 

@@ -20,8 +20,8 @@
 #                            model to other cells: P = softmax((x / scale) @ W + b)
 #           test_predictions_tier1.npz  the test cells, their true class and donor, and the model's
 #                            probabilities (hbca_classifier/plots.py; scripts/figures.py redraws the figure)
-#           in figures/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, macro F1 and genes kept
-#           against alpha), and test_confusion_matrix.png and .pdf (% of each true state)
+#           in figures/05/ (or .../05/cap<N>/): cv_curves.png (log-loss, balanced accuracy and genes
+#           kept against alpha), and test_confusion_matrix.png and .pdf (% of each true state)
 #           With max_genes, every file above except cv_summary.csv gets a _max<N>genes suffix.
 #
 # Usage: python scripts/05_fit.py [max_cells_per_class] [max_genes]
@@ -34,9 +34,6 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
                              classification_report, f1_score)
@@ -46,7 +43,7 @@ from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER
                                       one_hot, mean_log_loss, set_threads,
                                       get_class_weights, get_sample_weights, get_scaling_weights)
 from hbca_classifier.group_enet import MultinomialGroupEnet, predict_proba
-from hbca_classifier.plots import save_predictions, draw_model_figures
+from hbca_classifier.plots import save_predictions, draw_model_figures, cv_curves
 
 warnings.filterwarnings('ignore', message='.*Sparse CSR tensor support is in beta.*')
 
@@ -75,6 +72,7 @@ if not cv_results['converged'].all():
 cv_summary = (cv_results.groupby(['l1_ratio', 'alpha'])
               .agg(log_loss=('log_loss', 'mean'), log_loss_se=('log_loss', 'sem'),
                    accuracy=('accuracy', 'mean'), balanced_accuracy=('balanced_accuracy', 'mean'),
+                   balanced_accuracy_se=('balanced_accuracy', 'sem'),
                    f1_macro=('f1_macro', 'mean'), f1_macro_se=('f1_macro', 'sem'),
                    n_genes=('n_genes', 'mean'))
               .reset_index())
@@ -92,23 +90,8 @@ print(f"Best{'' if max_genes is None else f' with at most {max_genes} genes'}: "
       f"(mean CV log-loss {best['log_loss']:.4f}, balanced accuracy {best['balanced_accuracy']:.3f}, "
       f"macro F1 {best['f1_macro']:.3f}, ~{best['n_genes']:.0f} genes)\n")
 
-# CV curves against alpha, one line per l1_ratio: mean held-out log-loss and macro F1 (+/- 1 standard
-# error), and genes kept. The black star marks the chosen pair.
-fig, axes = plt.subplots(1, 3, figsize=(18, 4.5))
-for l1r, d in cv_summary.groupby('l1_ratio'):
-    axes[0].errorbar(d['alpha'], d['log_loss'], yerr=d['log_loss_se'], marker='o', ms=3, capsize=2, label=f'l1_ratio = {l1r}')
-    axes[1].errorbar(d['alpha'], d['f1_macro'], yerr=d['f1_macro_se'], marker='o', ms=3, capsize=2, label=f'l1_ratio = {l1r}')
-    axes[2].plot(d['alpha'], d['n_genes'], marker='o', ms=3, label=f'l1_ratio = {l1r}')
-for ax, col in zip(axes, ['log_loss', 'f1_macro', 'n_genes']):
-    ax.plot(best_alpha, best[col], marker='*', ms=14, color='black', ls='none', zorder=5)
-if max_genes is not None:
-    axes[2].axhline(max_genes, color='grey', ls='--', lw=1)
-axes[0].set(xscale='log', xlabel='alpha', ylabel='Mean CV log-loss', title='Cross-validation: log-loss')
-axes[1].set(xscale='log', xlabel='alpha', ylabel='Mean CV macro F1', title='Cross-validation: macro F1')
-axes[2].set(xscale='log', xlabel='alpha', ylabel='Genes kept (mean over folds)', title='Model size')
-axes[0].legend()
-fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, f'cv_curves{suffix}.png'), dpi=200)
+# CV curves against alpha (log-loss, balanced accuracy, genes kept); scripts/figures.py redraws them
+cv_curves(cv_summary, best_l1_ratio, best_alpha, max_genes, os.path.join(figure_outdir_cur, f'cv_curves{suffix}.png'))
 
 # ---------------------- Refit on the whole training set
 X, prep = load_prepared(clf_dir)

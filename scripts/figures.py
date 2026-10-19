@@ -1,14 +1,15 @@
 # figures.py
 #
-# Redraws the test confusion matrix of every model in a run from their saved test predictions, without
-# refitting anything. Use it after changing the figure in hbca_classifier/plots.py, or to restyle it.
-# The fitting steps (05, 06, 07) draw the same figure when they run.
+# Redraws a run's result figures without refitting anything: the test confusion matrix of every model
+# (from its saved test predictions) and the tier-1 CV curves (from cv_summary.csv and each model[_max<G>genes].npz).
+# Use it after changing a figure in hbca_classifier/plots.py, or to restyle it. The fitting steps
+# (05, 06, 07) draw the same figures when they run.
 #
 # Needs:    test_predictions_<model><suffix>.npz files (from 05, 06, 07), and prep.npz (from 03, for the
 #           test cells' donors in files saved before predictions held them), in
 #           <STORAGE_DIR>/reed_level2_classifier[_cap<N>]/
-# Produces: for each file, its test confusion matrix (.png and .pdf), in the step's folder:
-#           figures/<step>[/cap<N>]/
+# Produces: for each predictions file, its test confusion matrix (.png and .pdf), in the step's folder
+#           figures/<step>[/cap<N>]/; for each tier-1 model, figures/05[/cap<N>]/cv_curves[_max<G>genes].png
 #
 # Usage: sbatch slurm/Run_figures.sh [max_cells_per_class]
 #        (python scripts/figures.py [max_cells_per_class]; 'none' or nothing for the full data)
@@ -20,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from hbca_classifier.settings import get_args, get_classifier_dir, get_figure_dir
-from hbca_classifier.plots import load_predictions, draw_model_figures
+from hbca_classifier.plots import load_predictions, draw_model_figures, cv_curves
 
 max_cells_per_class = get_args()
 clf_dir = get_classifier_dir(max_cells_per_class)
@@ -34,3 +35,14 @@ for path in files:
     stem = draw_model_figures(path, get_figure_dir(max_cells_per_class, d['step']),
                               donors=donor_of.loc[d['cells']].to_numpy())
     print(f"{os.path.basename(path)} -> {stem}.png, .pdf")
+
+# Tier-1 CV curves, one per fitted tier-1 model (model.npz, model_max<G>genes.npz)
+cv_summary = pd.read_csv(os.path.join(clf_dir, 'cv_summary.csv'))
+for path in sorted(glob.glob(os.path.join(clf_dir, 'model*.npz'))):
+    suffix = os.path.basename(path)[len('model'):-len('.npz')]
+    max_genes = int(suffix[len('_max'):-len('genes')]) if suffix else None
+    with np.load(path) as f:
+        best_l1_ratio, best_alpha = float(f['l1_ratio']), float(f['alpha'])
+    out = os.path.join(get_figure_dir(max_cells_per_class, '05'), f'cv_curves{suffix}.png')
+    cv_curves(cv_summary, best_l1_ratio, best_alpha, max_genes, out)
+    print(f"{os.path.basename(path)} -> {out}")

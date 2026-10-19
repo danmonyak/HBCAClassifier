@@ -5,6 +5,8 @@
 # with save_predictions and draw its figure with draw_model_figures; scripts/figures.py redraws every
 # model of a run from the saved files.
 #
+# Also the tier-1 CV curves (05), drawn from cv_summary.csv and the chosen model.
+#
 # The figure is the test-set confusion matrix as the percentage of each true state (rows sum to 100%).
 # Its diagonal is each state's recall, and their mean is the balanced accuracy shown in the title.
 #
@@ -67,6 +69,30 @@ def confusion_matrix_figure(y_true, pred, donors, label, path_stem):
     fig.tight_layout()
     for ext in ('png', 'pdf'):
         fig.savefig(f'{path_stem}.{ext}', dpi=300)
+    plt.close(fig)
+
+
+def cv_curves(cv_summary, best_l1_ratio, best_alpha, max_genes, path):
+    """Tier-1 CV curves against alpha, one line per l1_ratio: mean held-out log-loss (the selection
+    criterion) and balanced accuracy (+/- 1 standard error when cv_summary has it), and genes kept.
+    The black star marks the chosen model."""
+    best = cv_summary[np.isclose(cv_summary['l1_ratio'], best_l1_ratio) & np.isclose(cv_summary['alpha'], best_alpha)].iloc[0]
+    cols = ['log_loss', 'balanced_accuracy', 'n_genes']
+    fig, axes = plt.subplots(1, 3, figsize=(18, 4.5))
+    for l1r, d in cv_summary.groupby('l1_ratio'):
+        for ax, col in zip(axes, cols):
+            se = d[f'{col}_se'] if f'{col}_se' in d else None
+            ax.errorbar(d['alpha'], d[col], yerr=se, marker='o', ms=3, capsize=2, label=f'l1_ratio = {l1r}')
+    for ax, col in zip(axes, cols):
+        ax.plot(best_alpha, best[col], marker='*', ms=14, color='black', ls='none', zorder=5)
+    if max_genes is not None:
+        axes[2].axhline(max_genes, color='grey', ls='--', lw=1)
+    axes[0].set(xscale='log', xlabel='alpha', ylabel='Mean CV log-loss', title='Cross-validation: log-loss')
+    axes[1].set(xscale='log', xlabel='alpha', ylabel='Mean CV balanced accuracy', title='Cross-validation: balanced accuracy')
+    axes[2].set(xscale='log', xlabel='alpha', ylabel='Genes kept (mean over folds)', title='Model size')
+    axes[0].legend()
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
     plt.close(fig)
 
 
