@@ -40,7 +40,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
                              classification_report, confusion_matrix, f1_score)
 
-from hbca_classifier.settings import (CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
+from hbca_classifier.settings import (score_text, CLASSES, N_FOLDS, L1_RATIOS, TOL, MAX_ITER,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       one_hot, mean_log_loss, set_threads,
                                       get_class_weights, get_sample_weights, get_scaling_weights, GENE_SCALING)
@@ -148,7 +148,7 @@ sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, ytickl
             vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
 ax.set(xlabel='Predicted', ylabel='True',
        title=f'Test set confusion matrix ({(np.linalg.norm(W, axis=1) > 0).sum()} genes, '
-             f'l1_ratio {best_l1_ratio}, alpha {best_alpha:.3g})')
+             f'l1_ratio {best_l1_ratio}, alpha {best_alpha:.3g})\n{score_text(y_test, pred_test)}')
 fig.tight_layout()
 fig.savefig(os.path.join(figure_outdir_cur, f'test_confusion_matrix{suffix}.png'), dpi=200)
 

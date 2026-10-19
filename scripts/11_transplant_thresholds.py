@@ -63,7 +63,7 @@ from torch import nn
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
-from hbca_classifier.settings import (OUTPUT_DIR, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_DROPOUT,
+from hbca_classifier.settings import (score_text, OUTPUT_DIR, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_DROPOUT,
                                       TRANSPLANT_SOURCE_CAP, TRANSPLANT_SOURCE_MAX_GENES, TRANSPLANT_GAMMAS,
                                       POSTHOC_GAMMAS, THRESHOLD_GRID, KEEP_STATES, FAMILIES, get_classifier_dir, get_figure_dir,
                                       load_prepared, set_threads)
@@ -230,7 +230,8 @@ for g in TRANSPLANT_GAMMAS:
                         cbar_kws={'label': 'Fraction of true class'}, ax=ax)
             ax.set(title=f'TRANSPLANT network (trained gamma {g}), test set\n'
                          f'thresholds: Other {other_t:g}, states {state_t:g}; '
-                         f"{100 * summary['frac_unclassified']:.1f}% unclassified")
+                         f"{100 * summary['frac_unclassified']:.1f}% unclassified\n"
+                         f"{score_text(y_true, pred)} (unclassified cells count as misses)")
             fig.tight_layout()
             fig.savefig(os.path.join(figure_outdir_cur, f'threshold_confusion_gamma{g}{sfx}.png'), dpi=200)
             plt.close(fig)
@@ -299,7 +300,8 @@ for g in TRANSPLANT_GAMMAS:
                         cbar_kws={'label': 'Fraction of true class'}, ax=ax)
             ax.set(title=f'TRANSPLANT network (trained gamma {g}), test set, family fallback\n'
                          f'thresholds: Other {other_t:g}, states and families {state_t:g}; '
-                         f"{100 * summary['frac_unclassified']:.1f}% unclassified")
+                         f"{100 * summary['frac_unclassified']:.1f}% unclassified\n"
+                         f"{score_text(y_true, pred)} (state level: family calls and unclassified cells count as misses)")
             fig.tight_layout()
             fig.savefig(os.path.join(figure_outdir_cur, f'family_confusion_gamma{g}{sfx}.png'), dpi=200)
             plt.close(fig)

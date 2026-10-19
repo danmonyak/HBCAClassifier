@@ -45,7 +45,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from hbca_classifier.settings import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
+from hbca_classifier.settings import (score_text, CLASSES, RANDOM_STATE, NN_VAL_SIZE, KNN_K, KNN_GAMMAS, KNN_BETAS, KNN_QUERY_BATCH,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared, set_threads)
 
 t_start = time.time()
@@ -173,7 +173,8 @@ fig, ax = plt.subplots(figsize=(9, 7.5))
 sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
             vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
 ax.set(xlabel='Predicted', ylabel='True',
-       title=f'Weighted KNN, {len(genes)} genes (k = {best_k}, gamma = {best_gamma}, beta = {best_beta}): test set')
+       title=f'Weighted KNN, {len(genes)} genes (k = {best_k}, gamma = {best_gamma}, beta = {best_beta}): test set\n'
+             f'{score_text(y_test, pred_test)}')
 fig.tight_layout()
 fig.savefig(os.path.join(figure_outdir_cur, f'knn_test_confusion_matrix{suffix}.png'), dpi=200)
 plt.close(fig)

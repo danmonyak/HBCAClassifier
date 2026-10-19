@@ -27,7 +27,7 @@ import seaborn as sns
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from hbca_classifier.settings import (OUTPUT_DIR, CLASSES, TRANSPLANT_GAMMAS, TRANSPLANT_SOURCE_CAP,
+from hbca_classifier.settings import (score_text, OUTPUT_DIR, CLASSES, TRANSPLANT_GAMMAS, TRANSPLANT_SOURCE_CAP,
                                       get_figure_dir, get_class_weights, mean_log_loss)
 
 out_dir = os.path.join(OUTPUT_DIR, 'reed_level2_transplant')
@@ -89,7 +89,7 @@ for key, (name, P) in models.items():
     fig, ax = plt.subplots(figsize=(9, 7.5))
     sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
                 vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
-    ax.set(xlabel='Predicted', ylabel='True', title=f'TRANSPLANT, {name}: test set')
+    ax.set(xlabel='Predicted', ylabel='True', title=f'TRANSPLANT, {name}: test set\n{score_text(y_test, pred)}')
     fig.tight_layout()
     fig.savefig(os.path.join(figure_outdir_cur, f'{key}_test_confusion_matrix.png'), dpi=200)
     plt.close(fig)

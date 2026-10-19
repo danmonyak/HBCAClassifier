@@ -44,7 +44,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
                              classification_report, confusion_matrix)
 
-from hbca_classifier.settings import (CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
+from hbca_classifier.settings import (score_text, CLASSES, RANDOM_STATE, NN_VAL_SIZE, NN_HIDDEN, NN_ARCHITECTURES, NN_DROPOUT,
                                       NN_LEARNING_RATE, NN_BATCH_SIZE, NN_MAX_EPOCHS, NN_PATIENCE,
                                       get_args, get_classifier_dir, get_figure_dir, load_prepared,
                                       mean_log_loss, set_threads, get_class_weights)
@@ -111,7 +111,7 @@ def save_confusion_matrix(pred, title, file_name):
     fig, ax = plt.subplots(figsize=(9, 7.5))
     sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=CLASSES, yticklabels=CLASSES,
                 vmin=0, vmax=1, cbar_kws={'label': 'Fraction of true class'}, ax=ax)
-    ax.set(xlabel='Predicted', ylabel='True', title=title)
+    ax.set(xlabel='Predicted', ylabel='True', title=f'{title}\n{score_text(y_test, pred)}')
     fig.tight_layout()
     fig.savefig(os.path.join(figure_outdir_cur, file_name), dpi=200)
     plt.close(fig)
@@ -177,18 +177,6 @@ for epoch in range(1, NN_MAX_EPOCHS + 1):
 net.load_state_dict(best_state)
 log(f"stopped after {epoch} epochs; best validation loss {best_val:.4f} at epoch {best_epoch}")
 
-# Training curve: (weighted) loss per epoch, with the epoch kept marked
-hist = pd.DataFrame(history)
-fig, ax = plt.subplots(figsize=(7, 4.5))
-ax.plot(hist['epoch'], hist['train_loss'], label='training')
-ax.plot(hist['epoch'], hist['val_loss'], label='validation')
-ax.axvline(best_epoch, color='grey', ls='--', lw=1, label=f'kept (epoch {best_epoch})')
-ax.set(xlabel='Epoch', ylabel='Class-weighted cross-entropy', title=f'Neural network, {len(genes)} genes')
-ax.legend()
-fig.tight_layout()
-fig.savefig(os.path.join(figure_outdir_cur, f'nn_training_curve{out}.png'), dpi=200)
-plt.close(fig)
-
 with torch.no_grad():
     P_nn = torch.softmax(net(to_tensor(X_test)), dim=1).numpy().astype(np.float64)
 nn_name = 'Neural network' + ('' if architecture is None else f", {architecture} ({'-'.join(map(str, hidden))})")
@@ -196,6 +184,18 @@ pred_nn, metrics_nn = evaluate(nn_name, P_nn)
 save_report(pred_nn, f'nn_test_report{out}.csv')
 save_confusion_matrix(pred_nn, f'Neural network, {len(genes)} genes: test set',
                       f'nn_test_confusion_matrix{out}.png')
+
+# Training curve: (weighted) loss per epoch, with the epoch kept marked
+hist = pd.DataFrame(history)
+fig, ax = plt.subplots(figsize=(7, 4.5))
+ax.plot(hist['epoch'], hist['train_loss'], label='training')
+ax.plot(hist['epoch'], hist['val_loss'], label='validation')
+ax.axvline(best_epoch, color='grey', ls='--', lw=1, label=f'kept (epoch {best_epoch})')
+ax.set(xlabel='Epoch', ylabel='Class-weighted cross-entropy', title=f'Neural network, {len(genes)} genes\ntest set: {score_text(y_test, pred_nn)}')
+ax.legend()
+fig.tight_layout()
+fig.savefig(os.path.join(figure_outdir_cur, f'nn_training_curve{out}.png'), dpi=200)
+plt.close(fig)
 
 # ---------------------- Compare and save
 comparison = pd.DataFrame([metrics_base, metrics_nn])

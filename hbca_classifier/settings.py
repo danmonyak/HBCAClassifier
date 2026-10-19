@@ -162,6 +162,15 @@ def get_scaling_weights(y):
     return None if GENE_SCALING == 'cells' else get_sample_weights(y, get_class_weights(y))
 
 
+def score_text(y_true, pred):
+    """'balanced accuracy x, macro F1 y' for figure titles. Both are over the 11 classes; a prediction
+    that isn't one of them (e.g. 'Unclassified' in 11) counts as a miss."""
+    from sklearn.metrics import recall_score, f1_score
+    bacc = recall_score(y_true, pred, labels=CLASSES, average='macro', zero_division=0)
+    f1 = f1_score(y_true, pred, labels=CLASSES, average='macro', zero_division=0)
+    return f"balanced accuracy {bacc:.3f}, macro F1 {f1:.3f}"
+
+
 def mean_log_loss(y, P, class_weights=None):
     """Mean cross-entropy of true labels y under probabilities P (columns in the order of CLASSES).
     With class_weights, a weighted mean, so every class counts equally (like balanced accuracy).
